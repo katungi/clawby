@@ -1,3 +1,5 @@
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -27,6 +29,51 @@ pub fn run() {
                 )?;
 
                 app.global_shortcut().register(shortcut)?;
+            }
+
+            // ── System Tray Menu ──
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder};
+                use tauri::tray::TrayIconEvent;
+                use tauri::Emitter;
+
+                let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+                let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&settings_item)
+                    .separator()
+                    .item(&quit_item)
+                    .build()?;
+
+                if let Some(tray) = app.tray_by_id("main-tray") {
+                    tray.set_menu(Some(menu))?;
+
+                    tray.on_menu_event(move |app, event| {
+                        match event.id().as_ref() {
+                            "settings" => {
+                                let _ = app.emit("tray-settings", ());
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                            }
+                            "quit" => {
+                                app.exit(0);
+                            }
+                            _ => {}
+                        }
+                    });
+
+                    tray.on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click { .. } = event {
+                            if let Some(win) = tray.app_handle().get_webview_window("main") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                    });
+                }
             }
 
             // Window starts in settings mode (centered, large).

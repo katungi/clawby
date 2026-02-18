@@ -19,6 +19,20 @@ export function App() {
     // If not configured, window stays in settings mode (default size)
   }, []);
 
+  // Listen for "Settings" from the system tray menu
+  useEffect(() => {
+    if (!('__TAURI__' in window)) return;
+
+    let cleanup: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('tray-settings', () => {
+        handleOpenSettings();
+      }).then(unlisten => { cleanup = unlisten; });
+    });
+
+    return () => { cleanup?.(); };
+  }, []);
+
   async function handleConnected(cfg: AppConfig) {
     setConfig(cfg);
     setConfigured(true);
