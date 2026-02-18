@@ -1,8 +1,8 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { AppConfig } from '../lib/config';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useTauriIntegration } from '../hooks/useTauriIntegration';
-import { Clawby } from './Clawby';
+import ClawbyOrb from './ClawbyOrb';
 import { EdgeGlow } from './EdgeGlow';
 import { MicButton } from './MicButton';
 import { Transcript } from './Transcript';
@@ -32,33 +32,62 @@ const STATE_LABEL_COLORS: Record<string, string> = {
   speaking: '#10b981',
 };
 
+const GREETINGS = [
+  "Hey!",
+  "What's up?",
+  "I'm here.",
+  "Hey, what do you need?",
+  "Yo!",
+  "I'm listening.",
+];
+
 export function VoiceScreen({ config, onSettings }: VoiceScreenProps) {
-  const { state, userTranscript, aiResponse, startConversation, interrupt, cancel } =
+  const { state, userTranscript, aiResponse, startConversation, interrupt, cancel, enqueueSentence } =
     useVoiceSession(config);
 
-  // Global hotkey toggle via Tauri (Cmd+Shift+Space)
-  const handleToggle = useCallback(() => {
-    if (state === 'idle') {
-      startConversation();
-    } else if (state === 'listening') {
+  const isFirstActivation = useRef(true);
+
+  // Activation handler — Siri-like: immediately start listening
+  const handleActivate = useCallback(async () => {
+    if (state === 'listening') {
       cancel();
-    } else if (state === 'speaking') {
-      interrupt();
-    } else {
-      cancel();
+      return;
     }
-  }, [state, startConversation, interrupt, cancel]);
 
-  useTauriIntegration(handleToggle);
+    if (state === 'speaking') {
+      interrupt();
+      return;
+    }
 
+    // Ensure orb mode
+    const { setOrbMode } = await import('../lib/tauriWindow');
+    await setOrbMode();
+
+    if (isFirstActivation.current) {
+      // First activation this session — greet then listen
+      isFirstActivation.current = false;
+      const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+      enqueueSentence(greeting);
+      // Short delay for greeting to start, then begin listening
+      setTimeout(() => {
+        startConversation();
+      }, 800);
+    } else {
+      // Subsequent activations — straight to listening
+      startConversation();
+    }
+  }, [state, cancel, interrupt, startConversation, enqueueSentence]);
+
+  useTauriIntegration(handleActivate);
+
+  // Keyboard controls
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code === 'Space') {
         e.preventDefault();
         if (state === 'idle') startConversation();
-        else if (state === 'listening') {
-          cancel();
-        } else if (state === 'speaking') interrupt();
+        else if (state === 'listening') cancel();
+        else if (state === 'speaking') interrupt();
       } else if (e.code === 'Escape') {
         e.preventDefault();
         cancel();
@@ -68,6 +97,18 @@ export function VoiceScreen({ config, onSettings }: VoiceScreenProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state, startConversation, interrupt, cancel]);
+
+  // Auto-hide after 10s idle
+  useEffect(() => {
+    if (state !== 'idle') return;
+
+    const timer = setTimeout(async () => {
+      const { hideWindow } = await import('../lib/tauriWindow');
+      await hideWindow();
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [state]);
 
   function handleMicClick() {
     if (state === 'idle') startConversation();
@@ -93,7 +134,7 @@ export function VoiceScreen({ config, onSettings }: VoiceScreenProps) {
       <EdgeGlow active={state !== 'idle'} color={GLOW_COLORS[state] || '#8b5cf6'} />
       <button className="settings-btn" onClick={onSettings} title="Settings">⚙</button>
 
-      <Clawby expression={state} size={160} />
+      <ClawbyOrb state={state} size={200} />
       <div className="state-label" style={{ color: STATE_LABEL_COLORS[state] }}>
         {STATE_LABELS[state]}
       </div>

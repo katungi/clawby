@@ -1,24 +1,24 @@
 import { useEffect } from 'react';
 
-// Check if running inside Tauri
 const isTauri = () => '__TAURI__' in window;
 
-export function useTauriIntegration(onToggle: () => void) {
+export function useTauriIntegration(onActivate: () => void) {
   useEffect(() => {
     if (!isTauri()) return;
 
-    // Listen for global shortcut event emitted from Rust
-    const listen = async () => {
+    let cleanup: (() => void) | undefined;
+
+    const setup = async () => {
       const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen('global-shortcut', () => {
-        onToggle();
+
+      // Listen for both hotkey and tray click (unified "activate" event)
+      const unlisten = await listen('activate', () => {
+        onActivate();
       });
-      return unlisten;
+      cleanup = unlisten;
     };
 
-    let cleanup: (() => void) | undefined;
-    listen().then(unlisten => { cleanup = unlisten; });
-
+    setup();
     return () => { cleanup?.(); };
-  }, [onToggle]);
+  }, [onActivate]);
 }

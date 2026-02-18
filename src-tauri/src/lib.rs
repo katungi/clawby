@@ -22,7 +22,12 @@ pub fn run() {
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, _shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
-                                let _ = app.emit("global-shortcut", "toggle");
+                                // Show window + activate
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                                let _ = app.emit("activate", "hotkey");
                             }
                         })
                         .build(),
@@ -65,12 +70,14 @@ pub fn run() {
                         }
                     });
 
-                    tray.on_tray_icon_event(|tray, event| {
+                    let app_handle = app.handle().clone();
+                    tray.on_tray_icon_event(move |_tray, event| {
                         if let TrayIconEvent::Click { .. } = event {
-                            if let Some(win) = tray.app_handle().get_webview_window("main") {
+                            if let Some(win) = app_handle.get_webview_window("main") {
                                 let _ = win.show();
                                 let _ = win.set_focus();
                             }
+                            let _ = app_handle.emit("activate", "tray");
                         }
                     });
                 }

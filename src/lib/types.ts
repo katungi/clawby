@@ -1,4 +1,4 @@
-export type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type AppState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'sleeping';
 
 export type ClawbyExpression = 'idle' | 'listening' | 'thinking' | 'speaking' | 'sleeping';
 

@@ -129,6 +129,7 @@ export function useVoiceSession(config: AppConfig) {
     cancel,
     clearHistory,
     processInput,
+    enqueueSentence,
     isSpeaking,
   };
 }
