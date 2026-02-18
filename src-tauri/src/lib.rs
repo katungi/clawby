@@ -54,6 +54,10 @@ pub fn run() {
                 if let Some(tray) = app.tray_by_id("main-tray") {
                     tray.set_menu(Some(menu))?;
 
+                    // Left click launches the orb; right click shows the menu
+                    #[cfg(target_os = "macos")]
+                    tray.set_show_menu_on_left_click(false)?;
+
                     tray.on_menu_event(move |app, event| {
                         match event.id().as_ref() {
                             "settings" => {
@@ -72,7 +76,8 @@ pub fn run() {
 
                     let app_handle = app.handle().clone();
                     tray.on_tray_icon_event(move |_tray, event| {
-                        if let TrayIconEvent::Click { .. } = event {
+                        use tauri::tray::MouseButton;
+                        if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
                             if let Some(win) = app_handle.get_webview_window("main") {
                                 let _ = win.show();
                                 let _ = win.set_focus();

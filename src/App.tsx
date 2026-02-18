@@ -81,7 +81,7 @@ export function App() {
       height: '100vh',
       background: 'transparent',
     }}>
-      <VoiceScreen config={config!} onSettings={handleOpenSettings} />
+      <VoiceScreen config={config!} />
     </div>
   );
 }
