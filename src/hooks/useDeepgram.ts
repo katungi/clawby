@@ -3,7 +3,8 @@ import { useRef, useState, useCallback } from 'react';
 interface UseDeepgramOptions {
   apiKey: string;
   onTranscript: (text: string, isFinal: boolean) => void;
-  onUtteranceEnd?: () => void;
+  onUtteranceEnd: () => void;
+  onSpeechStart: () => void;
   onError: (error: string) => void;
 }
 
@@ -13,7 +14,7 @@ interface UseDeepgramReturn {
   isListening: boolean;
 }
 
-export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onError }: UseDeepgramOptions): UseDeepgramReturn {
+export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onSpeechStart, onError }: UseDeepgramOptions): UseDeepgramReturn {
   const [isListening, setIsListening] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -39,11 +40,16 @@ export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onError }: U
     }
     streamRef.current = stream;
 
-    const dgUrl =
-      'wss://api.deepgram.com/v1/listen?' +
-      'model=nova-2&smart_format=true&interim_results=true&endpointing=300&utterance_end_ms=1000';
+    const dgUrl = new URL('wss://api.deepgram.com/v1/listen');
+    dgUrl.searchParams.set('model', 'nova-2');
+    dgUrl.searchParams.set('smart_format', 'true');
+    dgUrl.searchParams.set('interim_results', 'true');
+    dgUrl.searchParams.set('endpointing', '250');
+    dgUrl.searchParams.set('utterance_end_ms', '1000');
+    dgUrl.searchParams.set('vad_events', 'true');
+    dgUrl.searchParams.set('filler_words', 'true');
 
-    const ws = new WebSocket(dgUrl, ['token', apiKey]);
+    const ws = new WebSocket(dgUrl.toString(), ['token', apiKey]);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -70,7 +76,10 @@ export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onError }: U
           return;
         }
 
-        if (data.type === 'SpeechStarted') return;
+        if (data.type === 'SpeechStarted') {
+          onSpeechStart();
+          return;
+        }
 
         const transcript = data.channel?.alternatives?.[0]?.transcript;
         if (!transcript) return;
@@ -89,7 +98,7 @@ export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onError }: U
     ws.onclose = () => {
       // normal close
     };
-  }, [apiKey, onTranscript, onUtteranceEnd, onError, cleanup]);
+  }, [apiKey, onTranscript, onUtteranceEnd, onSpeechStart, onError, cleanup]);
 
   const stopListening = useCallback(() => {
     cleanup();

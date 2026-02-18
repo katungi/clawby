@@ -5,6 +5,16 @@ import { useTTS } from './useTTS';
 import type { AppState } from '../lib/types';
 import type { AppConfig } from '../lib/config';
 
+function getSilenceThreshold(transcript: string): number {
+  const words = transcript.trim().split(/\s+/);
+  const lastWord = words[words.length - 1]?.toLowerCase() || '';
+  const fillers = ['um', 'uh', 'like', 'so', 'and', 'but', 'or', 'well', 'hmm'];
+
+  if (fillers.includes(lastWord)) return 1800;
+  if (words.length <= 5) return 800;
+  return 1200;
+}
+
 export function useVoiceSession(config: AppConfig) {
   const [state, setState] = useState<AppState>('idle');
   const [userTranscript, setUserTranscript] = useState('');
@@ -27,6 +37,8 @@ export function useVoiceSession(config: AppConfig) {
 
   const processInput = useCallback(
     (text: string) => {
+      // Clear immediately so no other trigger can re-send the same transcript
+      finalTranscriptRef.current = '';
       stopMicRef.current();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       setState('thinking');
@@ -68,11 +80,12 @@ export function useVoiceSession(config: AppConfig) {
         setUserTranscript(finalTranscriptRef.current);
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        const threshold = getSilenceThreshold(finalTranscriptRef.current);
         silenceTimerRef.current = window.setTimeout(() => {
           if (finalTranscriptRef.current.trim()) {
             processInput(finalTranscriptRef.current.trim());
           }
-        }, 1200);
+        }, threshold);
       } else {
         setUserTranscript(
           finalTranscriptRef.current + (finalTranscriptRef.current ? ' ' : '') + text,
@@ -81,6 +94,17 @@ export function useVoiceSession(config: AppConfig) {
     },
     [processInput],
   );
+
+  const handleSpeechStart = useCallback(() => {
+    // Cancel pending timer — user is still talking
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+    // INTERRUPTION: if Clawby is speaking, stop and listen
+    if (state === 'speaking') {
+      stopTTS();
+      setState('listening');
+    }
+  }, [state, stopTTS]);
 
   const handleError = useCallback((err: string) => {
     setAiResponse(`Mic error: ${err}`);
@@ -91,6 +115,7 @@ export function useVoiceSession(config: AppConfig) {
     apiKey: config.deepgramKey,
     onTranscript: handleTranscript,
     onUtteranceEnd: handleUtteranceEnd,
+    onSpeechStart: handleSpeechStart,
     onError: handleError,
   });
 
