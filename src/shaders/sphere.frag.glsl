@@ -11,36 +11,28 @@ varying float vDisplacement;
 varying vec3 vWorldPosition;
 
 void main() {
-  // View direction for Fresnel
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-
-  // Fresnel — edges glow brighter
   float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), uFresnelPower);
 
-  // Color mixing based on displacement + Fresnel + time
+  // Color mixing driven by displacement — ripples carry the color
   float colorMix1 = sin(vDisplacement * 8.0 + uTime * 0.5) * 0.5 + 0.5;
   float colorMix2 = cos(vDisplacement * 6.0 - uTime * 0.3) * 0.5 + 0.5;
 
-  // Blend three colors
   vec3 baseColor = mix(uColor1, uColor2, colorMix1);
   baseColor = mix(baseColor, uColor3, colorMix2 * 0.4);
 
-  // Apply Fresnel glow
-  vec3 fresnelColor = mix(baseColor * 0.3, baseColor, fresnel);
+  // Displacement-driven brightness: ripple peaks glow, valleys are darker
+  float rippleIntensity = smoothstep(-0.15, 0.2, vDisplacement);
+  vec3 finalColor = baseColor * mix(0.2, 1.0, rippleIntensity);
 
-  // Add rim brightness
-  float rim = fresnel * fresnel;
-  fresnelColor += rim * baseColor * 0.8;
-
-  // Inner darkness (center is darker, edges glow)
-  float innerDark = smoothstep(0.0, 0.6, fresnel);
-  vec3 finalColor = mix(baseColor * 0.05, fresnelColor, innerDark);
+  // Subtle rim enhancement
+  finalColor += baseColor * fresnel * 0.25;
 
   // Overall brightness
   finalColor *= uBrightness;
 
-  // Alpha — center is more opaque, edges are glowing
-  float alpha = mix(0.85, 1.0, fresnel);
+  // Soft edge alpha — no hard border, fades at the rim
+  float alpha = (1.0 - smoothstep(0.6, 1.0, fresnel)) * 0.92;
 
   gl_FragColor = vec4(finalColor, alpha);
 }

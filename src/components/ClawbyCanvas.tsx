@@ -27,9 +27,9 @@ const STATE_CONFIGS: Record<string, {
     brightness: 0.9,
   },
   listening: {
-    color1: [0.63, 0.69, 0.97],
-    color2: [0.77, 0.63, 0.94],
-    color3: [0.53, 0.75, 0.97],
+    color1: [0.55, 0.36, 0.96],   // vivid purple #8b5cf6
+    color2: [0.44, 0.28, 0.85],   // deeper purple
+    color3: [0.67, 0.47, 1.0],    // lighter lavender
     noiseStrength: 0.18,
     noiseSpeed: 0.4,
     noiseFrequency: 2.0,
@@ -49,9 +49,9 @@ const STATE_CONFIGS: Record<string, {
     brightness: 1.0,
   },
   speaking: {
-    color1: [0.63, 0.91, 0.75],
-    color2: [0.50, 0.85, 0.69],
-    color3: [0.72, 0.94, 0.82],
+    color1: [0.06, 0.73, 0.51],   // vivid green #10b981
+    color2: [0.12, 0.82, 0.60],   // brighter green
+    color3: [0.04, 0.64, 0.44],   // deeper green
     noiseStrength: 0.15,
     noiseSpeed: 0.35,
     noiseFrequency: 1.8,
