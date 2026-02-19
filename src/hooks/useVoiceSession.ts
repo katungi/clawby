@@ -20,6 +20,7 @@ export function useVoiceSession(config: AppConfig) {
   const [userTranscript, setUserTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const finalTranscriptRef = useRef('');
+  const segmentsRef = useRef<Map<number, string>>(new Map());
   const silenceTimerRef = useRef<number | null>(null);
   // Ref to break circular dependency: processInput needs stopMic, useDeepgram needs processInput
   const stopMicRef = useRef<() => void>(() => {});
@@ -39,6 +40,7 @@ export function useVoiceSession(config: AppConfig) {
     (text: string) => {
       // Clear immediately so no other trigger can re-send the same transcript
       finalTranscriptRef.current = '';
+      segmentsRef.current.clear();
       stopMicRef.current();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       setState('thinking');
@@ -74,9 +76,15 @@ export function useVoiceSession(config: AppConfig) {
   }, [processInput]);
 
   const handleTranscript = useCallback(
-    (text: string, isFinal: boolean) => {
+    (text: string, isFinal: boolean, start: number) => {
       if (isFinal) {
-        finalTranscriptRef.current += (finalTranscriptRef.current ? ' ' : '') + text;
+        // Use segment start position as key — overwrites rather than appends
+        // if Deepgram sends multiple finals for the same audio range
+        segmentsRef.current.set(start, text);
+        finalTranscriptRef.current = [...segmentsRef.current.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, t]) => t)
+          .join(' ');
         setUserTranscript(finalTranscriptRef.current);
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -87,8 +95,12 @@ export function useVoiceSession(config: AppConfig) {
           }
         }, threshold);
       } else {
+        const finalized = [...segmentsRef.current.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, t]) => t)
+          .join(' ');
         setUserTranscript(
-          finalTranscriptRef.current + (finalTranscriptRef.current ? ' ' : '') + text,
+          finalized + (finalized ? ' ' : '') + text,
         );
       }
     },
@@ -125,6 +137,7 @@ export function useVoiceSession(config: AppConfig) {
   const startConversation = useCallback(() => {
     stopTTS();
     finalTranscriptRef.current = '';
+    segmentsRef.current.clear();
     setUserTranscript('');
     setAiResponse('');
     setState('listening');
@@ -141,6 +154,7 @@ export function useVoiceSession(config: AppConfig) {
     stopTTS();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     finalTranscriptRef.current = '';
+    segmentsRef.current.clear();
     setUserTranscript('');
     setState('idle');
   }, [stopMic, stopTTS]);

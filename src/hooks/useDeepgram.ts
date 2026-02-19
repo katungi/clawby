@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react';
 
 interface UseDeepgramOptions {
   apiKey: string;
-  onTranscript: (text: string, isFinal: boolean) => void;
+  onTranscript: (text: string, isFinal: boolean, start: number) => void;
   onUtteranceEnd: () => void;
   onSpeechStart: () => void;
   onError: (error: string) => void;
@@ -84,7 +84,7 @@ export function useDeepgram({ apiKey, onTranscript, onUtteranceEnd, onSpeechStar
         const transcript = data.channel?.alternatives?.[0]?.transcript;
         if (!transcript) return;
 
-        onTranscript(transcript, !!data.is_final);
+        onTranscript(transcript, !!data.is_final, data.start ?? 0);
       } catch {
         // ignore parse errors
       }
