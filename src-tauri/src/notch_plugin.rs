@@ -1,53 +1,98 @@
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    Runtime, Window,
+    Runtime, WebviewWindow, Window,
 };
 
 #[cfg(target_os = "macos")]
 mod macos {
     use cocoa::appkit::NSWindowCollectionBehavior;
-    use cocoa::base::{id, NO, YES};
+    use cocoa::base::{id, nil, NO, YES};
+    use cocoa::foundation::{NSRect, NSString};
     use objc::{class, msg_send, sel, sel_impl};
-    use tauri::Window;
 
-    /// Configure native window properties that Tauri can't set via its API:
-    /// - Window level above menu bar (.statusBar = 25)
-    /// - Collection behavior (all spaces, stationary, fullscreen auxiliary)
-    /// - Prevents activation (doesn't steal focus)
-    /// - Transparent background
-    ///
-    /// Positioning is handled by Tauri's own APIs — NOT by objc setFrame.
-    pub fn configure_notch_window<R: tauri::Runtime>(window: &Window<R>) {
-        let ns_window = window.ns_window().unwrap() as id;
+    extern "C" {
+        fn CGDisplayIsBuiltin(display: u32) -> i32;
+    }
 
-        unsafe {
-            // Window level .statusBar = 25, above .mainMenu = 24
-            // This is what boring.notch uses to overlay the notch area
-            let _: () = msg_send![ns_window, setLevel: 25_i64];
+    /// Find the NSScreen for the built-in display (the one with the notch).
+    /// Falls back to mainScreen if no built-in display is found (e.g. clamshell mode).
+    unsafe fn find_builtin_screen() -> id {
+        let screens: id = msg_send![class!(NSScreen), screens];
+        let count: usize = msg_send![screens, count];
 
-            // Borderless — no title bar, no traffic lights
-            let _: () = msg_send![ns_window, setStyleMask: 0_u64];
+        for i in 0..count {
+            let screen: id = msg_send![screens, objectAtIndex: i];
+            let desc: id = msg_send![screen, deviceDescription];
+            let key: id = NSString::alloc(nil).init_str("NSScreenNumber");
+            let screen_num: id = msg_send![desc, objectForKey: key];
+            let display_id: u32 = msg_send![screen_num, unsignedIntValue];
 
-            // Prevent activation — private API workaround since Tauri gives NSWindow not NSPanel
-            let _: () = msg_send![ns_window, _setPreventsActivation: YES];
-
-            // Collection behavior from boring.notch:
-            // canJoinAllSpaces + stationary + fullScreenAuxiliary
-            let behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
-                | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
-                | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary;
-            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-
-            // Transparency
-            let clear_color: id = msg_send![class!(NSColor), clearColor];
-            let _: () = msg_send![ns_window, setBackgroundColor: clear_color];
-            let _: () = msg_send![ns_window, setOpaque: NO];
-            let _: () = msg_send![ns_window, setHasShadow: NO];
-
-            // Don't hide when app loses focus
-            let _: () = msg_send![ns_window, setHidesOnDeactivate: NO];
-            let _: () = msg_send![ns_window, setReleasedWhenClosed: NO];
+            if CGDisplayIsBuiltin(display_id) != 0 {
+                return screen;
+            }
         }
+
+        // Fallback: main screen (e.g. clamshell mode with external monitor)
+        msg_send![class!(NSScreen), mainScreen]
+    }
+
+    /// Configure native window properties and position on the built-in display.
+    /// Takes a raw NSWindow pointer so it works with both Window and WebviewWindow.
+    pub unsafe fn configure_ns_window(ns_window: id) {
+        // Window level .statusBar = 25, above .mainMenu = 24
+        let _: () = msg_send![ns_window, setLevel: 25_i64];
+
+        // Borderless — no title bar, no traffic lights
+        let _: () = msg_send![ns_window, setStyleMask: 0_u64];
+
+        // Prevent activation — private API workaround since Tauri gives NSWindow not NSPanel
+        let _: () = msg_send![ns_window, _setPreventsActivation: YES];
+
+        // Collection behavior:
+        // canJoinAllSpaces + stationary + fullScreenAuxiliary
+        let behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
+            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary;
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+
+        // Transparency
+        let clear_color: id = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![ns_window, setBackgroundColor: clear_color];
+        let _: () = msg_send![ns_window, setOpaque: NO];
+        let _: () = msg_send![ns_window, setHasShadow: NO];
+
+        // Don't hide when app loses focus
+        let _: () = msg_send![ns_window, setHidesOnDeactivate: NO];
+        let _: () = msg_send![ns_window, setReleasedWhenClosed: NO];
+
+        // Position window to fill the built-in display
+        let target_screen = find_builtin_screen();
+        let frame: NSRect = msg_send![target_screen, frame];
+        let _: () = msg_send![ns_window, setFrame: frame display: YES];
+    }
+
+    /// Get cursor position relative to the given NSWindow (top-left origin, logical points).
+    pub unsafe fn cursor_position_relative_to(ns_window: id) -> (f64, f64) {
+        use cocoa::foundation::NSPoint;
+
+        let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
+        let win_frame: NSRect = msg_send![ns_window, frame];
+
+        let x = mouse_loc.x - win_frame.origin.x;
+        let y = (win_frame.origin.y + win_frame.size.height) - mouse_loc.y;
+        (x, y)
+    }
+}
+
+// ── Public API for lib.rs ──
+
+/// Configure native window properties and position on the built-in display.
+/// Called from setup before showing the window to avoid flicker.
+pub fn configure_window<R: Runtime>(window: &WebviewWindow<R>) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let ns_window = window.ns_window().unwrap() as cocoa::base::id;
+        macos::configure_ns_window(ns_window);
     }
 }
 
@@ -56,24 +101,23 @@ mod macos {
 #[tauri::command]
 async fn setup_notch<R: Runtime>(window: Window<R>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    macos::configure_notch_window(&window);
+    unsafe {
+        let ns_window = window.ns_window().unwrap() as cocoa::base::id;
+        macos::configure_ns_window(ns_window);
+    }
     Ok(())
 }
 
-/// Returns the cursor position in screen coordinates (top-left origin, logical points).
+/// Returns the cursor position relative to the calling window (top-left origin, logical points).
+/// This matches the web view's coordinate system (getBoundingClientRect).
 #[tauri::command]
-async fn get_cursor_position() -> Result<(f64, f64), String> {
+async fn get_cursor_position<R: Runtime>(window: Window<R>) -> Result<(f64, f64), String> {
     #[cfg(target_os = "macos")]
     {
-        use cocoa::base::id;
-        use cocoa::foundation::{NSPoint, NSRect};
-        use objc::{class, msg_send, sel, sel_impl};
-
         unsafe {
-            let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
-            let main_screen: id = msg_send![class!(NSScreen), mainScreen];
-            let frame: NSRect = msg_send![main_screen, frame];
-            Ok((mouse_loc.x, frame.size.height - mouse_loc.y))
+            let ns_window = window.ns_window().unwrap() as cocoa::base::id;
+            let (x, y) = macos::cursor_position_relative_to(ns_window);
+            return Ok((x, y));
         }
     }
     #[cfg(not(target_os = "macos"))]

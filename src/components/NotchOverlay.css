@@ -14,33 +14,44 @@
 
 .notch {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   background: rgba(0, 0, 0, 0.92);
   border-radius: 0 0 14px 14px;
-  padding: 0 12px;
-  gap: 10px;
-  overflow: hidden;
   pointer-events: auto;
 
   /* Apple's spring curve — same as Dynamic Island */
-  transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: width 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+              border-radius 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
+
+/* ── Idle: compact bar with orb ── */
 
 .notch.idle {
-  justify-content: center;
-  padding: 0 6px;
-  width: 200px;
-  height: 36px;
+  width: 300px;
 }
+
+/* ── Expanded: listening, no content yet — grow right a bit ── */
 
 .notch.expanded {
-  justify-content: flex-start;
-  width: 560px;
-  height: 48px;
+  width: 360px;
 }
 
-.notch.expanded.state-speaking {
-  height: 64px;
+/* ── Expanded with content: wider card ── */
+
+.notch.expanded.has-content {
+  width: 480px;
+  border-radius: 0 0 18px 18px;
+}
+
+/* ── Top bar (orb + inline indicator) ── */
+
+.notch-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 38px;
+  flex-shrink: 0;
+  gap: 10px;
 }
 
 /* ── Orb Container ── */
@@ -52,36 +63,62 @@
   justify-content: center;
 }
 
-/* ── Transcript Text ── */
+/* ── Inline listening indicator (dots) ── */
 
-.notch-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  padding-right: 8px;
+.notch-indicator {
+  display: flex;
+  align-items: center;
+  animation: fadeSlideIn 0.2s ease-out;
+}
+
+.listening-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.listening-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(100, 140, 255, 0.8);
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.listening-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.listening-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* ── Content area (drops below the bar) ── */
+
+.notch-content {
+  padding: 4px 14px 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.01em;
-  animation: fadeSlideIn 0.2s ease-out;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  animation: contentReveal 0.25s ease-out;
 }
 
-.notch-text.listening {
+.notch-content.listening {
   color: rgba(255, 255, 255, 0.7);
   font-style: italic;
-  text-align: right;
 }
 
-.notch-text.thinking {
+.notch-content.thinking {
   color: rgba(255, 255, 255, 0.5);
-  animation: fadeSlideIn 0.2s ease-out, thinkPulse 1.2s ease-in-out infinite;
+  animation: contentReveal 0.25s ease-out, thinkPulse 1.2s ease-in-out infinite;
 }
 
-.notch-text.speaking {
+.notch-content.speaking {
   color: rgba(255, 255, 255, 0.95);
-  text-align: left;
 }
 
 /* ── State Glow ── */
@@ -97,7 +134,17 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes contentReveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes thinkPulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
 }

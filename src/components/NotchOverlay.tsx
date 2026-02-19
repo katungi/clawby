@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { AppConfig } from '../lib/config';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useTauriIntegration } from '../hooks/useTauriIntegration';
@@ -10,15 +10,6 @@ interface NotchOverlayProps {
   config: AppConfig;
 }
 
-const GREETINGS = [
-  "Hey!",
-  "What's up?",
-  "I'm here.",
-  "Hey, what do you need?",
-  "Yo!",
-  "I'm listening.",
-];
-
 export function NotchOverlay({ config }: NotchOverlayProps) {
   const {
     state,
@@ -27,11 +18,9 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
     startConversation,
     interrupt,
     cancel,
-    enqueueSentence,
   } = useVoiceSession(config);
 
   const { isExpanded } = useNotch(state);
-  const isFirstActivation = useRef(true);
 
   // Activation handler
   const handleActivate = useCallback(async () => {
@@ -45,17 +34,8 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
       return;
     }
 
-    if (isFirstActivation.current) {
-      isFirstActivation.current = false;
-      const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-      enqueueSentence(greeting);
-      setTimeout(() => {
-        startConversation();
-      }, 800);
-    } else {
-      startConversation();
-    }
-  }, [state, cancel, interrupt, startConversation, enqueueSentence]);
+    startConversation();
+  }, [state, cancel, interrupt, startConversation]);
 
   useTauriIntegration(handleActivate);
 
@@ -77,31 +57,48 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state, startConversation, interrupt, cancel]);
 
-  // Display text based on state
-  const displayText = (() => {
-    switch (state) {
-      case 'listening': return userTranscript || 'Listening...';
-      case 'thinking': return '···';
-      case 'speaking': return aiResponse;
-      default: return '';
-    }
+  // Content to show in the dropdown area (below the notch bar)
+  const contentText = (() => {
+    if (state === 'listening' && userTranscript) return userTranscript;
+    if (state === 'thinking') return '···';
+    if (state === 'speaking') return aiResponse;
+    return '';
   })();
 
-  // Orb sizes: 28px idle (fits in 36px notch), 40px expanded (fits in 48px notch)
-  const orbSize = isExpanded ? 40 : 28;
+  const hasContent = contentText.length > 0;
+
+  // Determine notch class
+  const notchClass = (() => {
+    if (!isExpanded) return 'idle';
+    if (hasContent) return 'expanded has-content';
+    return 'expanded';
+  })();
+
+  const orbSize = isExpanded ? 32 : 28;
 
   return (
     <div className="notch-wrapper">
-      <div className={`notch ${isExpanded ? 'expanded' : 'idle'} state-${state}`}>
-        {/* Clawby orb — LEFT side */}
-        <div className="notch-orb" onClick={handleActivate} style={{ cursor: 'pointer' }}>
-          <ClawbyOrb state={state} size={orbSize} />
+      <div className={`notch ${notchClass} state-${state}`}>
+        {/* Top bar — orb + inline indicator */}
+        <div className="notch-bar">
+          <div className="notch-orb" onClick={handleActivate} style={{ cursor: 'pointer' }}>
+            <ClawbyOrb state={state} size={orbSize} />
+          </div>
+
+          {/* Inline listening indicator (dots) when no transcript yet */}
+          {isExpanded && !hasContent && state === 'listening' && (
+            <div className="notch-indicator">
+              <span className="listening-dots">
+                <span /><span /><span />
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Transcript — RIGHT side */}
-        {isExpanded && (
-          <div className={`notch-text ${state}`}>
-            {displayText}
+        {/* Content area — drops below the notch bar */}
+        {hasContent && (
+          <div className={`notch-content ${state}`}>
+            {contentText}
           </div>
         )}
       </div>

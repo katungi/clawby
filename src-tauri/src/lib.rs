@@ -1,4 +1,4 @@
-use tauri::{ActivationPolicy, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{ActivationPolicy, Manager};
 
 mod notch_plugin;
 
@@ -83,26 +83,11 @@ pub fn run() {
                 }
             }
 
-            // ── Size window to match screen (like reference code) ──
-            // The window fills the entire screen transparently.
-            // The notch pill is positioned purely via CSS at the top center.
-            // This avoids fighting Tauri over window frame coordinates.
+            // ── Configure and position on the built-in display ──
+            // Native setup: window level, collection behavior, transparency,
+            // and positioning on the built-in screen (the one with the notch).
             let window = app.get_webview_window("main").unwrap();
-
-            if let Some(monitor) = window.current_monitor()? {
-                let screen_size = monitor.size();
-                let screen_pos = monitor.position();
-
-                window.set_size(PhysicalSize {
-                    width: screen_size.width,
-                    height: screen_size.height,
-                })?;
-
-                window.set_position(PhysicalPosition {
-                    x: screen_pos.x,
-                    y: screen_pos.y,
-                })?;
-            }
+            notch_plugin::configure_window(&window);
 
             window.set_focusable(false)?;
             window.set_visible_on_all_workspaces(true)?;
