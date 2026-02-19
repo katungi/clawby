@@ -1,29 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useDeepgram } from './useDeepgram';
+import { useDeepgramFlux, type FluxCallbacks } from './useDeepgramFlux';
 import { useOpenClaw } from './useOpenClaw';
 import { useTTS } from './useTTS';
 import type { AppState } from '../lib/types';
 import type { AppConfig } from '../lib/config';
 
-function getSilenceThreshold(transcript: string): number {
-  const words = transcript.trim().split(/\s+/);
-  const lastWord = words[words.length - 1]?.toLowerCase() || '';
-  const fillers = ['um', 'uh', 'like', 'so', 'and', 'but', 'or', 'well', 'hmm'];
-
-  if (fillers.includes(lastWord)) return 1800;
-  if (words.length <= 5) return 800;
-  return 1200;
-}
-
 export function useVoiceSession(config: AppConfig) {
   const [state, setState] = useState<AppState>('idle');
   const [userTranscript, setUserTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
-  const finalTranscriptRef = useRef('');
-  const segmentsRef = useRef<Map<number, string>>(new Map());
-  const silenceTimerRef = useRef<number | null>(null);
-  // Ref to break circular dependency: processInput needs stopMic, useDeepgram needs processInput
+  // Ref to break circular dependency: processInput needs stopMic, useDeepgramFlux needs processInput
   const stopMicRef = useRef<() => void>(() => {});
+  // Ref so Flux callbacks always see the latest state (avoids stale closures)
+  const stateRef = useRef<AppState>(state);
+  stateRef.current = state;
 
   const { sendMessageStreaming, clearHistory } = useOpenClaw({
     url: config.openclawUrl,
@@ -38,11 +28,7 @@ export function useVoiceSession(config: AppConfig) {
 
   const processInput = useCallback(
     (text: string) => {
-      // Clear immediately so no other trigger can re-send the same transcript
-      finalTranscriptRef.current = '';
-      segmentsRef.current.clear();
       stopMicRef.current();
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       setState('thinking');
       setAiResponse('');
 
@@ -68,67 +54,52 @@ export function useVoiceSession(config: AppConfig) {
     [sendMessageStreaming, enqueueSentence],
   );
 
-  const handleUtteranceEnd = useCallback(() => {
-    if (finalTranscriptRef.current.trim()) {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      processInput(finalTranscriptRef.current.trim());
-    }
-  }, [processInput]);
-
-  const handleTranscript = useCallback(
-    (text: string, isFinal: boolean, start: number) => {
-      if (isFinal) {
-        // Use segment start position as key — overwrites rather than appends
-        // if Deepgram sends multiple finals for the same audio range
-        segmentsRef.current.set(start, text);
-        finalTranscriptRef.current = [...segmentsRef.current.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([, t]) => t)
-          .join(' ');
-        setUserTranscript(finalTranscriptRef.current);
-
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        const threshold = getSilenceThreshold(finalTranscriptRef.current);
-        silenceTimerRef.current = window.setTimeout(() => {
-          if (finalTranscriptRef.current.trim()) {
-            processInput(finalTranscriptRef.current.trim());
-          }
-        }, threshold);
-      } else {
-        const finalized = [...segmentsRef.current.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([, t]) => t)
-          .join(' ');
-        setUserTranscript(
-          finalized + (finalized ? ' ' : '') + text,
-        );
+  // ── Flux Event Callbacks ──
+  const fluxCallbacks: FluxCallbacks = {
+    onStartOfTurn: () => {
+      // BARGE-IN: if Clawby is speaking, stop TTS and listen
+      if (stateRef.current === 'speaking') {
+        stopTTS();
       }
-    },
-    [processInput],
-  );
-
-  const handleSpeechStart = useCallback(() => {
-    // Cancel pending timer — user is still talking
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-    // INTERRUPTION: if Clawby is speaking, stop and listen
-    if (state === 'speaking') {
-      stopTTS();
       setState('listening');
-    }
-  }, [state, stopTTS]);
+      setUserTranscript('');
+      setAiResponse('');
+    },
 
-  const handleError = useCallback((err: string) => {
-    setAiResponse(`Mic error: ${err}`);
-    setState('idle');
-  }, []);
+    onUpdate: (transcript) => {
+      // Live interim transcript — just display it
+      setUserTranscript(transcript);
+    },
 
-  const { startListening: startMic, stopListening: stopMic } = useDeepgram({
+    onEagerEndOfTurn: () => {
+      // Phase 1: no-op — no speculative responses yet
+      // Phase 2: fire speculative LLM call here
+    },
+
+    onTurnResumed: () => {
+      // Phase 1: no-op
+      // Phase 2: cancel speculative LLM call here
+    },
+
+    onEndOfTurn: (transcript) => {
+      // Definitive end of turn — process for real
+      setUserTranscript(transcript);
+      processInput(transcript);
+    },
+
+    onError: (error) => {
+      console.error('[Flux] Error:', error);
+    },
+  };
+
+  const { startListening: startMic, stopListening: stopMic } = useDeepgramFlux({
     apiKey: config.deepgramKey,
-    onTranscript: handleTranscript,
-    onUtteranceEnd: handleUtteranceEnd,
-    onSpeechStart: handleSpeechStart,
-    onError: handleError,
+    callbacks: fluxCallbacks,
+    eotThreshold: 0.7,
+    // Phase 1: no eager end-of-turn
+    // eagerEotThreshold: 0.4,
+    eotTimeoutMs: 3000,
+    keyterms: ['ClawAssist', 'Clawby', 'OpenClaw'],
   });
 
   // Keep ref in sync so processInput can call stopMic
@@ -141,8 +112,6 @@ export function useVoiceSession(config: AppConfig) {
 
   const startConversation = useCallback(() => {
     stopTTS();
-    finalTranscriptRef.current = '';
-    segmentsRef.current.clear();
     setUserTranscript('');
     setAiResponse('');
     setState('listening');
@@ -157,9 +126,6 @@ export function useVoiceSession(config: AppConfig) {
   const cancel = useCallback(() => {
     stopMic();
     stopTTS();
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    finalTranscriptRef.current = '';
-    segmentsRef.current.clear();
     setUserTranscript('');
     setState('idle');
   }, [stopMic, stopTTS]);
