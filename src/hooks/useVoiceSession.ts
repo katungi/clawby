@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDeepgram } from './useDeepgram';
 import { useOpenClaw } from './useOpenClaw';
 import { useTTS } from './useTTS';
@@ -133,6 +133,11 @@ export function useVoiceSession(config: AppConfig) {
 
   // Keep ref in sync so processInput can call stopMic
   stopMicRef.current = stopMic;
+
+  // Ensure mic is always off when idle — no passive listening
+  useEffect(() => {
+    if (state === 'idle') stopMic();
+  }, [state, stopMic]);
 
   const startConversation = useCallback(() => {
     stopTTS();

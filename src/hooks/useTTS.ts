@@ -71,7 +71,10 @@ export function useTTS({ apiKey, voice }: UseTTSOptions) {
 
         const blob = await res.blob();
         const audio = new Audio(URL.createObjectURL(blob));
-        queueRef.current.push(audio);
+
+        // Drop any pending sentences — only speak the latest one
+        queueRef.current.forEach((a) => URL.revokeObjectURL(a.src));
+        queueRef.current = [audio];
 
         if (!isPlayingRef.current) {
           playNext();
