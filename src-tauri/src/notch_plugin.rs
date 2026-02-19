@@ -60,9 +60,29 @@ async fn setup_notch<R: Runtime>(window: Window<R>) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns the cursor position in screen coordinates (top-left origin, logical points).
+#[tauri::command]
+async fn get_cursor_position() -> Result<(f64, f64), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use cocoa::base::id;
+        use cocoa::foundation::{NSPoint, NSRect};
+        use objc::{class, msg_send, sel, sel_impl};
+
+        unsafe {
+            let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
+            let main_screen: id = msg_send![class!(NSScreen), mainScreen];
+            let frame: NSRect = msg_send![main_screen, frame];
+            Ok((mouse_loc.x, frame.size.height - mouse_loc.y))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    Ok((0.0, 0.0))
+}
+
 /// Register as Tauri plugin.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("notch")
-        .invoke_handler(tauri::generate_handler![setup_notch])
+        .invoke_handler(tauri::generate_handler![setup_notch, get_cursor_position])
         .build()
 }

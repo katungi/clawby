@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { AppState } from '../lib/types';
 
 interface ClawbyEyesProps {
@@ -39,24 +39,74 @@ export default function ClawbyEyes({ state, size = BASE_SIZE }: ClawbyEyesProps)
     return () => clearTimeout(tid);
   }, [state]);
 
-  // Look direction
+  // Look direction — pattern-based for non-idle states
   useEffect(() => {
     if (state === 'sleeping') { setLook({ x: 0, y: 0 }); return; }
+    if (state === 'idle') return; // handled by mouse tracking
     const patterns: Record<string, { x: number; y: number }[]> = {
-      idle: [
-        { x: 0, y: 0 }, { x: 8, y: -2 }, { x: 0, y: 0 }, { x: -7, y: 1 }, { x: 0, y: 0 },
-        { x: 4, y: -5 }, { x: 0, y: 0 }, { x: -5, y: -4 }, { x: 0, y: 0 }, { x: 2, y: 4 }, { x: 0, y: 0 },
-      ],
       listening: [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 0 }, { x: 1, y: -1 }],
       thinking: [{ x: 5, y: -7 }, { x: -4, y: -8 }, { x: 6, y: -5 }, { x: -2, y: -9 }, { x: 0, y: -8 }],
       speaking: [{ x: 0, y: 0 }, { x: 2, y: -1 }, { x: -1, y: 0 }, { x: 0, y: -2 }, { x: 1, y: 1 }],
     };
-    const speeds: Record<string, number> = { idle: 1800, listening: 900, thinking: 1100, speaking: 1400 };
-    const p = patterns[state] || patterns.idle;
+    const speeds: Record<string, number> = { listening: 900, thinking: 1100, speaking: 1400 };
+    const p = patterns[state] || patterns.listening;
     let i = 0;
     setLook(p[0]);
-    const t = setInterval(() => { i = (i + 1) % p.length; setLook(p[i]); }, speeds[state] || 1800);
+    const t = setInterval(() => { i = (i + 1) % p.length; setLook(p[i]); }, speeds[state] || 1400);
     return () => clearInterval(t);
+  }, [state]);
+
+  // Mouse tracking — eyes follow cursor when idle
+  const eyesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (state !== 'idle') return;
+
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      if (!active) return;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const [cx, cy] = await invoke<[number, number]>('plugin:notch|get_cursor_position');
+
+        if (eyesRef.current && active) {
+          const rect = eyesRef.current.getBoundingClientRect();
+          const orbX = rect.left + rect.width / 2;
+          const orbY = rect.top + rect.height / 2;
+
+          const dx = cx - orbX;
+          const dy = cy - orbY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 1) {
+            setLook({ x: 0, y: 0 });
+          } else {
+            const MAX = 10;
+            const DAMPING = 200;
+            const magnitude = (dist / (dist + DAMPING)) * MAX;
+            const angle = Math.atan2(dy, dx);
+            setLook({
+              x: Math.cos(angle) * magnitude,
+              y: Math.sin(angle) * magnitude,
+            });
+          }
+        }
+      } catch {
+        // Not in Tauri — fall back to center
+        setLook({ x: 0, y: 0 });
+      }
+
+      if (active) {
+        timeoutId = setTimeout(poll, 50); // ~20fps
+      }
+    };
+
+    poll();
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [state]);
 
   const eyeScale = state === 'listening' ? 1.25 : 1;
@@ -68,7 +118,7 @@ export default function ClawbyEyes({ state, size = BASE_SIZE }: ClawbyEyesProps)
   const glowSize2 = 24 * s * eyeScale;
 
   return (
-    <div style={{
+    <div ref={eyesRef} style={{
       position: 'absolute',
       top: '50%',
       left: '50%',
