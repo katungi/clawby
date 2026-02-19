@@ -16,16 +16,16 @@
       {
         "label": "main",
         "title": "ClawAssist",
-        "width": 500,
-        "height": 650,
-        "resizable": true,
         "transparent": true,
         "decorations": false,
-        "alwaysOnTop": false,
-        "skipTaskbar": false,
-        "visible": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "width": 1440,
+        "height": 900,
+        "visible": false,
         "shadow": false,
-        "center": true
+        "visibleOnAllWorkspaces": true
       }
     ],
     "security": {

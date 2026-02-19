@@ -1,0 +1,103 @@
+/* ── Full-viewport transparent wrapper ── */
+
+.notch-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* ── Notch Container ── */
+
+.notch {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.92);
+  border-radius: 0 0 14px 14px;
+  padding: 0 12px;
+  gap: 10px;
+  overflow: hidden;
+  pointer-events: auto;
+
+  /* Apple's spring curve — same as Dynamic Island */
+  transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.notch.idle {
+  justify-content: center;
+  padding: 0 6px;
+  width: 200px;
+  height: 36px;
+}
+
+.notch.expanded {
+  justify-content: flex-start;
+  width: 560px;
+  height: 48px;
+}
+
+.notch.expanded.state-speaking {
+  height: 64px;
+}
+
+/* ── Orb Container ── */
+
+.notch-orb {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Transcript Text ── */
+
+.notch-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  animation: fadeSlideIn 0.2s ease-out;
+}
+
+.notch-text.listening {
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  text-align: right;
+}
+
+.notch-text.thinking {
+  color: rgba(255, 255, 255, 0.5);
+  animation: fadeSlideIn 0.2s ease-out, thinkPulse 1.2s ease-in-out infinite;
+}
+
+.notch-text.speaking {
+  color: rgba(255, 255, 255, 0.95);
+  text-align: left;
+}
+
+/* ── State Glow ── */
+
+.notch.state-listening { box-shadow: 0 2px 20px rgba(100, 140, 255, 0.15); }
+.notch.state-thinking  { box-shadow: 0 2px 20px rgba(255, 200, 50, 0.1); }
+.notch.state-speaking  { box-shadow: 0 2px 20px rgba(100, 255, 150, 0.1); }
+
+/* ── Animations ── */
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes thinkPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}

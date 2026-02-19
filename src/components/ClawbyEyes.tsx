@@ -6,7 +6,11 @@ interface ClawbyEyesProps {
   size?: number;
 }
 
-export default function ClawbyEyes({ state }: ClawbyEyesProps) {
+const BASE_SIZE = 200; // original orb size the eyes were designed for
+
+export default function ClawbyEyes({ state, size = BASE_SIZE }: ClawbyEyesProps) {
+  const s = size / BASE_SIZE; // scale factor
+
   const [blink, setBlink] = useState(false);
   const [look, setLook] = useState({ x: 0, y: 0 });
 
@@ -56,17 +60,21 @@ export default function ClawbyEyes({ state }: ClawbyEyesProps) {
   }, [state]);
 
   const eyeScale = state === 'listening' ? 1.25 : 1;
-  const eyeW = 18 * eyeScale;
-  const eyeH = 24 * eyeScale;
+  const eyeW = 18 * s * eyeScale;
+  const eyeH = 24 * s * eyeScale;
+  const gap = (state === 'speaking' ? 22 : 20) * s;
+  const blinkH = Math.max(1, 3 * s);
+  const glowSize1 = 12 * s * eyeScale;
+  const glowSize2 = 24 * s * eyeScale;
 
   return (
     <div style={{
       position: 'absolute',
       top: '50%',
       left: '50%',
-      transform: `translate(calc(-50% + ${look.x}px), calc(-50% + ${look.y}px))`,
+      transform: `translate(calc(-50% + ${look.x * s}px), calc(-50% + ${look.y * s}px))`,
       display: 'flex',
-      gap: state === 'speaking' ? '22px' : '20px',
+      gap: `${gap}px`,
       alignItems: 'center',
       transition: 'transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94), gap 0.3s',
       zIndex: 10,
@@ -74,26 +82,26 @@ export default function ClawbyEyes({ state }: ClawbyEyesProps) {
     }}>
       {state === 'sleeping' ? (
         <>
-          <div style={{ width: 18, height: 2.5, background: 'rgba(255,255,255,0.35)', borderRadius: 2 }} />
-          <div style={{ width: 18, height: 2.5, background: 'rgba(255,255,255,0.35)', borderRadius: 2 }} />
+          <div style={{ width: 18 * s, height: Math.max(1, 2.5 * s), background: 'rgba(255,255,255,0.35)', borderRadius: Math.max(1, 2 * s) }} />
+          <div style={{ width: 18 * s, height: Math.max(1, 2.5 * s), background: 'rgba(255,255,255,0.35)', borderRadius: Math.max(1, 2 * s) }} />
         </>
       ) : state === 'speaking' ? (
         <>
-          <div style={{ width: 20, height: 12, borderTop: '4px solid white', borderRadius: '50% 50% 0 0', filter: 'drop-shadow(0 -2px 8px rgba(255,255,255,0.3))' }} />
-          <div style={{ width: 20, height: 12, borderTop: '4px solid white', borderRadius: '50% 50% 0 0', filter: 'drop-shadow(0 -2px 8px rgba(255,255,255,0.3))' }} />
+          <div style={{ width: 20 * s, height: 12 * s, borderTop: `${Math.max(1, 4 * s)}px solid white`, borderRadius: `${50 * s}% ${50 * s}% 0 0`, filter: `drop-shadow(0 ${-2 * s}px ${8 * s}px rgba(255,255,255,0.3))` }} />
+          <div style={{ width: 20 * s, height: 12 * s, borderTop: `${Math.max(1, 4 * s)}px solid white`, borderRadius: `${50 * s}% ${50 * s}% 0 0`, filter: `drop-shadow(0 ${-2 * s}px ${8 * s}px rgba(255,255,255,0.3))` }} />
         </>
       ) : (
         <>
           <div style={{
-            width: eyeW, height: blink ? 3 : eyeH,
+            width: eyeW, height: blink ? blinkH : eyeH,
             borderRadius: '50%', background: 'white',
-            boxShadow: `0 0 ${12 * eyeScale}px rgba(255,255,255,0.5), 0 0 ${24 * eyeScale}px rgba(255,255,255,0.2)`,
+            boxShadow: `0 0 ${glowSize1}px rgba(255,255,255,0.5), 0 0 ${glowSize2}px rgba(255,255,255,0.2)`,
             transition: 'height 0.08s ease, width 0.25s ease',
           }} />
           <div style={{
-            width: eyeW, height: blink ? 3 : eyeH,
+            width: eyeW, height: blink ? blinkH : eyeH,
             borderRadius: '50%', background: 'white',
-            boxShadow: `0 0 ${12 * eyeScale}px rgba(255,255,255,0.5), 0 0 ${24 * eyeScale}px rgba(255,255,255,0.2)`,
+            boxShadow: `0 0 ${glowSize1}px rgba(255,255,255,0.5), 0 0 ${glowSize2}px rgba(255,255,255,0.2)`,
             transition: 'height 0.08s ease, width 0.25s ease',
           }} />
         </>

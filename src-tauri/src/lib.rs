@@ -1,9 +1,15 @@
-use tauri::Manager;
+use tauri::{ActivationPolicy, Manager, PhysicalPosition, PhysicalSize};
+
+mod notch_plugin;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(notch_plugin::init())
         .setup(|app| {
+            // Hide from Dock — notch overlay doesn't need a Dock icon
+            app.set_activation_policy(ActivationPolicy::Accessory);
+
             // ── Global Shortcut Plugin ──
             #[cfg(desktop)]
             {
@@ -12,7 +18,6 @@ pub fn run() {
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
 
-                // Cmd+Shift+Space (Mac) / Ctrl+Shift+Space (Windows/Linux)
                 let shortcut = Shortcut::new(
                     Some(Modifiers::SUPER | Modifiers::SHIFT),
                     Code::Space,
@@ -22,11 +27,6 @@ pub fn run() {
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, _shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
-                                // Show window + activate
-                                if let Some(win) = app.get_webview_window("main") {
-                                    let _ = win.show();
-                                    let _ = win.set_focus();
-                                }
                                 let _ = app.emit("activate", "hotkey");
                             }
                         })
@@ -54,7 +54,6 @@ pub fn run() {
                 if let Some(tray) = app.tray_by_id("main-tray") {
                     tray.set_menu(Some(menu))?;
 
-                    // Left click launches the orb; right click shows the menu
                     #[cfg(target_os = "macos")]
                     tray.set_show_menu_on_left_click(false)?;
 
@@ -78,26 +77,46 @@ pub fn run() {
                     tray.on_tray_icon_event(move |_tray, event| {
                         use tauri::tray::MouseButton;
                         if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                            if let Some(win) = app_handle.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                            }
                             let _ = app_handle.emit("activate", "tray");
                         }
                     });
                 }
             }
 
-            // Window starts in settings mode (centered, large).
-            // JS side switches to orb mode after config is loaded.
+            // ── Size window to match screen (like reference code) ──
+            // The window fills the entire screen transparently.
+            // The notch pill is positioned purely via CSS at the top center.
+            // This avoids fighting Tauri over window frame coordinates.
+            let window = app.get_webview_window("main").unwrap();
+
+            if let Some(monitor) = window.current_monitor()? {
+                let screen_size = monitor.size();
+                let screen_pos = monitor.position();
+
+                window.set_size(PhysicalSize {
+                    width: screen_size.width,
+                    height: screen_size.height,
+                })?;
+
+                window.set_position(PhysicalPosition {
+                    x: screen_pos.x,
+                    y: screen_pos.y,
+                })?;
+            }
+
+            window.set_focusable(false)?;
+            window.set_visible_on_all_workspaces(true)?;
+            window.set_ignore_cursor_events(true)?;
+            window.show()?;
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Hide instead of close when user clicks X or Escape
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .run(tauri::generate_context!())
