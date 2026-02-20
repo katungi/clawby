@@ -42,13 +42,14 @@ export default function ClawbyEyes({ state, size = BASE_SIZE }: ClawbyEyesProps)
   // Look direction — pattern-based for non-idle states
   useEffect(() => {
     if (state === 'sleeping') { setLook({ x: 0, y: 0 }); return; }
-    if (state === 'idle') return; // handled by mouse tracking
     const patterns: Record<string, { x: number; y: number }[]> = {
+      waking: [{ x: 0, y: 0 }, { x: 0, y: -1 }],
       listening: [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 0 }, { x: 1, y: -1 }],
       thinking: [{ x: 5, y: -7 }, { x: -4, y: -8 }, { x: 6, y: -5 }, { x: -2, y: -9 }, { x: 0, y: -8 }],
       speaking: [{ x: 0, y: 0 }, { x: 2, y: -1 }, { x: -1, y: 0 }, { x: 0, y: -2 }, { x: 1, y: 1 }],
+      waiting: [{ x: 0, y: 0 }, { x: 1, y: -1 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 0 }],
     };
-    const speeds: Record<string, number> = { listening: 900, thinking: 1100, speaking: 1400 };
+    const speeds: Record<string, number> = { waking: 500, listening: 900, thinking: 1100, speaking: 1400, waiting: 2000 };
     const p = patterns[state] || patterns.listening;
     let i = 0;
     setLook(p[0]);
@@ -59,7 +60,7 @@ export default function ClawbyEyes({ state, size = BASE_SIZE }: ClawbyEyesProps)
   // Mouse tracking — eyes follow cursor when idle
   const eyesRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (state !== 'idle') return;
+    if (state !== 'sleeping') return;
 
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;

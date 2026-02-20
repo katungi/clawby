@@ -15,16 +15,16 @@ const STATE_CONFIGS: Record<string, {
   fresnelPower: number;
   brightness: number;
 }> = {
-  idle: {
-    color1: [0.97, 0.77, 0.71],
-    color2: [0.91, 0.64, 0.82],
-    color3: [0.72, 0.83, 0.63],
-    noiseStrength: 0.12,
-    noiseSpeed: 0.15,
-    noiseFrequency: 1.5,
-    pulse: 0.3,
-    fresnelPower: 2.5,
-    brightness: 0.9,
+  waking: {
+    color1: [0.65, 0.55, 0.95],
+    color2: [0.55, 0.45, 0.88],
+    color3: [0.75, 0.65, 1.0],
+    noiseStrength: 0.14,
+    noiseSpeed: 0.5,
+    noiseFrequency: 1.8,
+    pulse: 0.6,
+    fresnelPower: 2.2,
+    brightness: 1.0,
   },
   listening: {
     color1: [0.55, 0.36, 0.96],   // vivid purple #8b5cf6
@@ -59,6 +59,17 @@ const STATE_CONFIGS: Record<string, {
     fresnelPower: 2.2,
     brightness: 1.1,
   },
+  waiting: {
+    color1: [0.80, 0.77, 0.90],
+    color2: [0.74, 0.71, 0.84],
+    color3: [0.77, 0.74, 0.87],
+    noiseStrength: 0.08,
+    noiseSpeed: 0.10,
+    noiseFrequency: 1.3,
+    pulse: 0.2,
+    fresnelPower: 3.0,
+    brightness: 0.6,
+  },
   sleeping: {
     color1: [0.75, 0.72, 0.85],
     color2: [0.69, 0.66, 0.78],
@@ -83,7 +94,7 @@ export default function ClawbyCanvas({ state, size = 240 }: ClawbyCanvasProps) {
   const uniformsRef = useRef<any>(null);
   const frameRef = useRef<number>(0);
   const clockRef = useRef(new THREE.Clock());
-  const targetConfigRef = useRef(STATE_CONFIGS.idle);
+  const targetConfigRef = useRef(STATE_CONFIGS.sleeping);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -106,7 +117,7 @@ export default function ClawbyCanvas({ state, size = 240 }: ClawbyCanvasProps) {
 
     const geometry = new THREE.SphereGeometry(1, 128, 128);
 
-    const config = STATE_CONFIGS.idle;
+    const config = STATE_CONFIGS.sleeping;
     const uniforms = {
       uTime: { value: 0 },
       uNoiseStrength: { value: config.noiseStrength },
@@ -172,7 +183,7 @@ export default function ClawbyCanvas({ state, size = 240 }: ClawbyCanvasProps) {
   }, [size]);
 
   useEffect(() => {
-    targetConfigRef.current = STATE_CONFIGS[state] || STATE_CONFIGS.idle;
+    targetConfigRef.current = STATE_CONFIGS[state] || STATE_CONFIGS.sleeping;
   }, [state]);
 
   return (

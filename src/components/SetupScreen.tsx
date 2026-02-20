@@ -24,6 +24,7 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
   const [oaiKey, setOaiKey] = useState(saved?.openaiKey ?? '');
   const [voice, setVoice] = useState<AppConfig['voice']>(saved?.voice ?? 'nova');
   const [model, setModel] = useState(saved?.model ?? 'openai/gpt-4o-mini');
+  const [pvKey, setPvKey] = useState(saved?.picovoiceKey ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -74,6 +75,7 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
       openaiKey: trimmedOai,
       voice,
       model: trimmedModel,
+      picovoiceKey: pvKey.trim() || undefined,
     };
 
     saveConfig(config);
@@ -115,6 +117,11 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
           <label>Model</label>
           <input value={model} onChange={(e) => setModel(e.target.value)} />
           <div className="hint">Must match a model configured in your OpenClaw</div>
+        </div>
+        <div className="field">
+          <label>Picovoice AccessKey (optional)</label>
+          <input type="password" placeholder="enables wake word detection" value={pvKey} onChange={(e) => setPvKey(e.target.value)} />
+          <div className="hint">Free at picovoice.ai — say "Computer" to activate. Leave blank for hotkey-only.</div>
         </div>
 
         <button type="submit" className="connect-btn" disabled={loading}>

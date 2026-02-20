@@ -61,7 +61,7 @@ export function VoiceScreen({ config }: VoiceScreenProps) {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code === 'Space') {
         e.preventDefault();
-        if (state === 'idle') startConversation();
+        if (state === 'sleeping') startConversation();
         else if (state === 'listening') cancel();
         else if (state === 'speaking') interrupt();
       } else if (e.code === 'Escape') {
@@ -76,7 +76,7 @@ export function VoiceScreen({ config }: VoiceScreenProps) {
 
   // Auto-hide after 10s idle
   useEffect(() => {
-    if (state !== 'idle') return;
+    if (state !== 'sleeping') return;
 
     const timer = setTimeout(async () => {
       const { hideWindow } = await import('../lib/tauriWindow');
@@ -87,7 +87,7 @@ export function VoiceScreen({ config }: VoiceScreenProps) {
   }, [state]);
 
   function handleOrbClick() {
-    if (state === 'idle') startConversation();
+    if (state === 'sleeping') startConversation();
     else if (state === 'listening') cancel();
     else if (state === 'speaking') interrupt();
   }

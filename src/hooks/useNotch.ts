@@ -5,7 +5,7 @@ import type { AppState } from '../lib/types';
 
 export function useNotch(state: AppState) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const prevStateRef = useRef<AppState>('idle');
+  const prevStateRef = useRef<AppState>('sleeping');
 
   // Configure native window properties on mount (level, behavior, transparency)
   useEffect(() => {
@@ -14,7 +14,7 @@ export function useNotch(state: AppState) {
 
   // Toggle cursor events: click-through when idle, interactive when expanded
   useEffect(() => {
-    const shouldExpand = state !== 'idle' && state !== 'sleeping';
+    const shouldExpand = state !== 'sleeping' && state !== 'waking';
 
     if (shouldExpand && !isExpanded) {
       setIsExpanded(true);

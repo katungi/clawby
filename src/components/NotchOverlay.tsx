@@ -44,7 +44,7 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code === 'Space') {
         e.preventDefault();
-        if (state === 'idle') startConversation();
+        if (state === 'sleeping' || state === 'waiting') startConversation();
         else if (state === 'listening') cancel();
         else if (state === 'speaking') interrupt();
       } else if (e.code === 'Escape') {
@@ -62,6 +62,7 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
     if (state === 'listening' && userTranscript) return userTranscript;
     if (state === 'thinking') return '···';
     if (state === 'speaking') return aiResponse;
+    if (state === 'waiting') return aiResponse;
     return '';
   })();
 

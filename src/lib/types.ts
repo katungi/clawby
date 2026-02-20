@@ -1,6 +1,6 @@
-export type AppState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'sleeping';
+export type AppState = 'sleeping' | 'waking' | 'listening' | 'thinking' | 'speaking' | 'waiting';
 
-export type ClawbyExpression = 'idle' | 'listening' | 'thinking' | 'speaking' | 'sleeping';
+export type ClawbyExpression = 'sleeping' | 'waking' | 'listening' | 'thinking' | 'speaking' | 'waiting';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant';

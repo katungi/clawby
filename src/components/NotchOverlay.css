@@ -121,11 +121,18 @@
   color: rgba(255, 255, 255, 0.95);
 }
 
+.notch-content.waiting {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* ── State Glow ── */
 
+.notch.state-sleeping  { box-shadow: 0 2px 12px rgba(150, 140, 200, 0.08); }
+.notch.state-waking    { box-shadow: 0 2px 20px rgba(150, 140, 255, 0.2); }
 .notch.state-listening { box-shadow: 0 2px 20px rgba(100, 140, 255, 0.15); }
 .notch.state-thinking  { box-shadow: 0 2px 20px rgba(255, 200, 50, 0.1); }
 .notch.state-speaking  { box-shadow: 0 2px 20px rgba(100, 255, 150, 0.1); }
+.notch.state-waiting   { box-shadow: 0 2px 16px rgba(100, 255, 150, 0.08); }
 
 /* ── Animations ── */
 

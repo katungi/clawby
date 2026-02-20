@@ -5,6 +5,7 @@ export interface AppConfig {
   openaiKey: string;
   voice: 'nova' | 'alloy' | 'echo' | 'fable' | 'onyx' | 'shimmer';
   model: string;
+  picovoiceKey?: string;
 }
 
 const STORAGE_KEY = 'clawassist-config';
