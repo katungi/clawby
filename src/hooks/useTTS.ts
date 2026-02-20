@@ -10,6 +10,7 @@ export function useTTS({ apiKey, voice }: UseTTSOptions) {
   const isPlayingRef = useRef(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const abortRef = useRef(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const playNext = useCallback(async () => {
     if (abortRef.current) {
@@ -27,6 +28,7 @@ export function useTTS({ apiKey, voice }: UseTTSOptions) {
     isPlayingRef.current = true;
     setIsSpeaking(true);
     const audio = queueRef.current.shift()!;
+    currentAudioRef.current = audio;
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -44,6 +46,7 @@ export function useTTS({ apiKey, voice }: UseTTSOptions) {
       // continue to next
     }
 
+    currentAudioRef.current = null;
     playNext();
   }, []);
 
@@ -88,6 +91,12 @@ export function useTTS({ apiKey, voice }: UseTTSOptions) {
 
   const stop = useCallback(() => {
     abortRef.current = true;
+    // Stop the currently playing audio immediately
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      URL.revokeObjectURL(currentAudioRef.current.src);
+      currentAudioRef.current = null;
+    }
     queueRef.current.forEach((a) => {
       a.pause();
       URL.revokeObjectURL(a.src);

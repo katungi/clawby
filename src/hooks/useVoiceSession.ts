@@ -9,11 +9,17 @@ export function useVoiceSession(config: AppConfig) {
   const [state, setState] = useState<AppState>('idle');
   const [userTranscript, setUserTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
-  // Ref to break circular dependency: processInput needs stopMic, useDeepgramFlux needs processInput
+  // Refs to break circular dependency: processInput needs stopMic/startMic, useDeepgramFlux needs processInput
   const stopMicRef = useRef<() => void>(() => {});
+  const startMicRef = useRef<() => Promise<void>>(() => Promise.resolve());
   // Ref so Flux callbacks always see the latest state (avoids stale closures)
   const stateRef = useRef<AppState>(state);
   stateRef.current = state;
+  // Guard against duplicate processInput calls (e.g. rapid EndOfTurn events)
+  const processingRef = useRef(false);
+  // Track LLM stream completion so we know when it's safe to resume listening
+  const streamDoneRef = useRef(false);
+  // Ref so callbacks can read the latest isSpeaking synchronously
 
   const { sendMessageStreaming, clearHistory } = useOpenClaw({
     url: config.openclawUrl,
@@ -26,8 +32,21 @@ export function useVoiceSession(config: AppConfig) {
     voice: config.voice,
   });
 
+  const isSpeakingRef = useRef(false);
+  isSpeakingRef.current = isSpeaking;
+
+  const resumeListening = useCallback(() => {
+    processingRef.current = false;
+    streamDoneRef.current = false;
+    setState('listening');
+    startMicRef.current();
+  }, []);
+
   const processInput = useCallback(
     (text: string) => {
+      if (processingRef.current) return;
+      processingRef.current = true;
+      streamDoneRef.current = false;
       stopMicRef.current();
       setState('thinking');
       setAiResponse('');
@@ -44,14 +63,21 @@ export function useVoiceSession(config: AppConfig) {
         },
         (fullResponse) => {
           setAiResponse(fullResponse);
+          streamDoneRef.current = true;
+          // Edge case: if TTS already finished (very short response), resume now
+          if (!isSpeakingRef.current && stateRef.current !== 'idle') {
+            resumeListening();
+          }
         },
         (error) => {
           setAiResponse(`Error: ${error}`);
           setState('idle');
+          processingRef.current = false;
+          streamDoneRef.current = false;
         },
       );
     },
-    [sendMessageStreaming, enqueueSentence],
+    [sendMessageStreaming, enqueueSentence, resumeListening],
   );
 
   // ── Flux Event Callbacks ──
@@ -60,6 +86,8 @@ export function useVoiceSession(config: AppConfig) {
       // BARGE-IN: if Clawby is speaking, stop TTS and listen
       if (stateRef.current === 'speaking') {
         stopTTS();
+        processingRef.current = false;
+        streamDoneRef.current = false;
       }
       setState('listening');
       setUserTranscript('');
@@ -67,22 +95,16 @@ export function useVoiceSession(config: AppConfig) {
     },
 
     onUpdate: (transcript) => {
-      // Live interim transcript — just display it
       setUserTranscript(transcript);
     },
 
-    onEagerEndOfTurn: () => {
-      // Phase 1: no-op — no speculative responses yet
-      // Phase 2: fire speculative LLM call here
-    },
+    onEagerEndOfTurn: () => {},
 
-    onTurnResumed: () => {
-      // Phase 1: no-op
-      // Phase 2: cancel speculative LLM call here
-    },
+    onTurnResumed: () => {},
 
     onEndOfTurn: (transcript) => {
-      // Definitive end of turn — process for real
+      // Only process when actually listening — ignore stale events during thinking/speaking
+      if (stateRef.current !== 'listening') return;
       setUserTranscript(transcript);
       processInput(transcript);
     },
@@ -102,16 +124,28 @@ export function useVoiceSession(config: AppConfig) {
     keyterms: ['ClawAssist', 'Clawby', 'OpenClaw'],
   });
 
-  // Keep ref in sync so processInput can call stopMic
+  // Keep refs in sync
   stopMicRef.current = stopMic;
+  startMicRef.current = startMic;
 
-  // Ensure mic is always off when idle — no passive listening
+  // When TTS finishes and LLM stream is done, resume listening for next turn
+  const prevSpeakingRef = useRef(false);
+  useEffect(() => {
+    if (prevSpeakingRef.current && !isSpeaking && streamDoneRef.current && stateRef.current !== 'idle') {
+      resumeListening();
+    }
+    prevSpeakingRef.current = isSpeaking;
+  }, [isSpeaking, resumeListening]);
+
+  // Ensure mic is always off when idle
   useEffect(() => {
     if (state === 'idle') stopMic();
   }, [state, stopMic]);
 
   const startConversation = useCallback(() => {
     stopTTS();
+    processingRef.current = false;
+    streamDoneRef.current = false;
     setUserTranscript('');
     setAiResponse('');
     setState('listening');
@@ -126,6 +160,8 @@ export function useVoiceSession(config: AppConfig) {
   const cancel = useCallback(() => {
     stopMic();
     stopTTS();
+    processingRef.current = false;
+    streamDoneRef.current = false;
     setUserTranscript('');
     setState('idle');
   }, [stopMic, stopTTS]);
