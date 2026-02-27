@@ -22,7 +22,6 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
 
   const { isExpanded } = useNotch(state);
 
-  // Activation handler
   const handleActivate = useCallback(async () => {
     if (state === 'listening') {
       cancel();
@@ -39,7 +38,6 @@ export function NotchOverlay({ config }: NotchOverlayProps) {
 
   useTauriIntegration(handleActivate);
 
-  // Keyboard controls
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code === 'Space') {

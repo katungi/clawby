@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { AppConfig } from '../lib/config';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useTauriIntegration } from '../hooks/useTauriIntegration';
@@ -8,20 +8,9 @@ interface VoiceScreenProps {
   config: AppConfig;
 }
 
-const GREETINGS = [
-  "Hey!",
-  "What's up?",
-  "I'm here.",
-  "Hey, what do you need?",
-  "Yo!",
-  "I'm listening.",
-];
-
 export function VoiceScreen({ config }: VoiceScreenProps) {
-  const { state, startConversation, interrupt, cancel, enqueueSentence } =
+  const { state, startConversation, interrupt, cancel } =
     useVoiceSession(config);
-
-  const isFirstActivation = useRef(true);
 
   // Activation handler — Siri-like: immediately start listening
   const handleActivate = useCallback(async () => {
@@ -39,20 +28,8 @@ export function VoiceScreen({ config }: VoiceScreenProps) {
     const { setOrbMode } = await import('../lib/tauriWindow');
     await setOrbMode();
 
-    if (isFirstActivation.current) {
-      // First activation this session — greet then listen
-      isFirstActivation.current = false;
-      const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-      enqueueSentence(greeting);
-      // Short delay for greeting to start, then begin listening
-      setTimeout(() => {
-        startConversation();
-      }, 800);
-    } else {
-      // Subsequent activations — straight to listening
-      startConversation();
-    }
-  }, [state, cancel, interrupt, startConversation, enqueueSentence]);
+    startConversation();
+  }, [state, cancel, interrupt, startConversation]);
 
   useTauriIntegration(handleActivate);
 

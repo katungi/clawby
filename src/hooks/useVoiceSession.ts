@@ -1,12 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDeepgramFlux, type FluxCallbacks } from './useDeepgramFlux';
-import { useOpenClaw } from './useOpenClaw';
+import { useConductor, type ConductorCallbacks } from './useConductor';
 import { useTTS } from './useTTS';
 import { usePorcupineWake } from './usePorcupineWake';
 import type { AppState } from '../lib/types';
 import type { AppConfig } from '../lib/config';
 
 const WAITING_TIMEOUT_MS = 4000; // 4 seconds before returning to sleep
+
+function normalizeTranscript(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s']/g, '')
+    .replace(/\s+/g, ' ');
+}
 
 export function useVoiceSession(config: AppConfig) {
   const [state, setState] = useState<AppState>('sleeping');
@@ -16,94 +24,115 @@ export function useVoiceSession(config: AppConfig) {
   const picovoiceKey = config.picovoiceKey || import.meta.env.VITE_PICOVOICE_KEY || '';
   const wakeWordEnabled = Boolean(picovoiceKey);
 
-  // Refs to break circular dependency: processInput needs stopMic/startMic, useDeepgramFlux needs processInput
+  // Refs to break circular dependency
   const stopMicRef = useRef<() => void>(() => {});
   const startMicRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  // Ref so Flux callbacks always see the latest state (avoids stale closures)
   const stateRef = useRef<AppState>(state);
   stateRef.current = state;
-  // Guard against duplicate processInput calls (e.g. rapid EndOfTurn events)
   const processingRef = useRef(false);
-  // Track LLM stream completion so we know when it's safe to enter waiting
   const streamDoneRef = useRef(false);
+  const speculativeInputRef = useRef<string | null>(null);
 
-  const { sendMessageStreaming, clearHistory } = useOpenClaw({
-    url: config.openclawUrl,
-    token: config.openclawToken,
-    model: config.model,
-  });
+  // ── TTS (OpenAI only) ──
 
-  const { enqueueSentence, stop: stopTTS, isSpeaking } = useTTS({
+  const tts = useTTS({
     apiKey: config.openaiKey,
     voice: config.voice,
   });
 
   const isSpeakingRef = useRef(false);
-  isSpeakingRef.current = isSpeaking;
+  isSpeakingRef.current = tts.isSpeaking;
 
   // ── Porcupine refs for use in callbacks (avoids stale closures) ──
   const startPorcupineRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const stopPorcupineRef = useRef<() => void>(() => {});
 
-  // ── Enter waiting state (replaces resumeListening) ──
-  // Flux stays open so user can speak a follow-up without re-triggering wake word
+  // ── Enter waiting state ──
   const enterWaiting = useCallback(() => {
     processingRef.current = false;
     streamDoneRef.current = false;
+    speculativeInputRef.current = null;
     setState('waiting');
-    // Mic stays on — Flux is still connected, waiting for follow-up
   }, []);
 
+  // ── Conductor ──
+  const conductorCallbacks: ConductorCallbacks = {
+    onTextDelta(_delta, accumulated) {
+      setAiResponse(accumulated);
+    },
+
+    onClause(clause) {
+      setState('speaking');
+      tts.enqueueSentence(clause);
+    },
+
+    onToolCallStart() {},
+    onToolCallComplete() {},
+
+    onComplete(fullResponse) {
+      setAiResponse(fullResponse);
+      streamDoneRef.current = true;
+      if (!isSpeakingRef.current && stateRef.current !== 'sleeping') {
+        enterWaiting();
+      }
+    },
+
+    onError(error) {
+      setAiResponse(`Error: ${error.message}`);
+      setState('sleeping');
+      processingRef.current = false;
+      streamDoneRef.current = false;
+      speculativeInputRef.current = null;
+      if (wakeWordEnabled) startPorcupineRef.current();
+    },
+  };
+
+  const conductor = useConductor(
+    {
+      conductorBaseUrl: config.conductorBaseUrl || `${config.openclawUrl}/v1`,
+      conductorModel: config.conductorModel || config.model || 'gpt-4o-mini',
+      conductorApiKey: config.openclawToken || config.openaiKey,
+      openClawUrl: '/openclaw',
+      openClawToken: config.openclawToken,
+      openClawModel: config.model,
+    },
+    conductorCallbacks,
+  );
+
   const processInput = useCallback(
-    (text: string) => {
+    (
+      text: string,
+      options?: {
+        stopMic?: boolean;
+        speculative?: boolean;
+      },
+    ) => {
+      const transcript = text.trim();
+      if (!transcript) return;
       if (processingRef.current) return;
       processingRef.current = true;
       streamDoneRef.current = false;
-      stopMicRef.current();
+      speculativeInputRef.current = options?.speculative ? transcript : null;
+      if (options?.stopMic !== false) {
+        stopMicRef.current();
+      }
       setState('thinking');
       setAiResponse('');
-
-      let responseAccumulator = '';
-
-      sendMessageStreaming(
-        text,
-        (sentence) => {
-          responseAccumulator += (responseAccumulator ? ' ' : '') + sentence;
-          setAiResponse(responseAccumulator);
-          setState('speaking');
-          enqueueSentence(sentence);
-        },
-        (fullResponse) => {
-          setAiResponse(fullResponse);
-          streamDoneRef.current = true;
-          // Edge case: if TTS already finished (very short response), enter waiting now
-          if (!isSpeakingRef.current && stateRef.current !== 'sleeping') {
-            enterWaiting();
-          }
-        },
-        (error) => {
-          setAiResponse(`Error: ${error}`);
-          setState('sleeping');
-          processingRef.current = false;
-          streamDoneRef.current = false;
-          if (wakeWordEnabled) startPorcupineRef.current();
-        },
-      );
+      void conductor.sendMessage(transcript);
     },
-    [sendMessageStreaming, enqueueSentence, enterWaiting, wakeWordEnabled],
+    [conductor],
   );
 
   // ── Flux Event Callbacks ──
   const fluxCallbacks: FluxCallbacks = {
     onStartOfTurn: () => {
-      // BARGE-IN: if Clawby is speaking, stop TTS and listen
-      if (stateRef.current === 'speaking') {
-        stopTTS();
+      if (stateRef.current === 'speaking' || stateRef.current === 'thinking') {
+        conductor.abort();
+        tts.stop();
         processingRef.current = false;
         streamDoneRef.current = false;
+        speculativeInputRef.current = null;
       }
-      // Follow-up during waiting — Flux is already open, just transition
-      // (the waiting timeout effect will auto-cancel via cleanup)
       setState('listening');
       setUserTranscript('');
       setAiResponse('');
@@ -113,15 +142,51 @@ export function useVoiceSession(config: AppConfig) {
       setUserTranscript(transcript);
     },
 
-    onEagerEndOfTurn: () => {},
+    onEagerEndOfTurn: (transcript) => {
+      if (stateRef.current !== 'listening' || processingRef.current) return;
+      setUserTranscript(transcript);
+      processInput(transcript, { stopMic: false, speculative: true });
+    },
 
-    onTurnResumed: () => {},
+    onTurnResumed: () => {
+      if (!processingRef.current || !speculativeInputRef.current) return;
+      conductor.abort();
+      processingRef.current = false;
+      streamDoneRef.current = false;
+      speculativeInputRef.current = null;
+      setAiResponse('');
+      setState('listening');
+    },
 
     onEndOfTurn: (transcript) => {
-      // Accept during listening OR waiting (follow-up)
-      if (stateRef.current !== 'listening' && stateRef.current !== 'waiting') return;
-      setUserTranscript(transcript);
-      processInput(transcript);
+      if (
+        stateRef.current !== 'listening'
+        && stateRef.current !== 'waiting'
+        && stateRef.current !== 'thinking'
+      ) return;
+
+      const finalTranscript = transcript.trim();
+      if (!finalTranscript) return;
+      setUserTranscript(finalTranscript);
+
+      if (processingRef.current) {
+        const speculativeInput = speculativeInputRef.current;
+        if (
+          speculativeInput
+          && normalizeTranscript(speculativeInput) === normalizeTranscript(finalTranscript)
+        ) {
+          speculativeInputRef.current = null;
+          stopMicRef.current();
+          return;
+        }
+
+        conductor.abort();
+        processingRef.current = false;
+        streamDoneRef.current = false;
+        speculativeInputRef.current = null;
+      }
+
+      processInput(finalTranscript, { stopMic: true });
     },
 
     onError: (error) => {
@@ -133,13 +198,11 @@ export function useVoiceSession(config: AppConfig) {
     apiKey: config.deepgramKey,
     callbacks: fluxCallbacks,
     eotThreshold: 0.7,
-    // Phase 1: no eager end-of-turn
-    // eagerEotThreshold: 0.4,
-    eotTimeoutMs: 3000,
+    eagerEotThreshold: 0.45,
+    eotTimeoutMs: 900,
     keyterms: ['ClawAssist', 'Clawby', 'OpenClaw'],
   });
 
-  // Keep refs in sync
   stopMicRef.current = stopMic;
   startMicRef.current = startMic;
 
@@ -156,7 +219,6 @@ export function useVoiceSession(config: AppConfig) {
     onWakeWordDetected: handleWakeWord,
   });
 
-  // Keep Porcupine refs in sync
   startPorcupineRef.current = startPorcupine;
   stopPorcupineRef.current = stopPorcupine;
 
@@ -167,18 +229,13 @@ export function useVoiceSession(config: AppConfig) {
     let cancelled = false;
 
     (async () => {
-      // 1. Stop Porcupine (releases mic)
       stopPorcupine();
-
-      // 2. Brief delay for mic release to complete
       await new Promise(r => setTimeout(r, 100));
       if (cancelled) return;
 
-      // 3. Start Flux (acquires mic)
       await startMic();
       if (cancelled) return;
 
-      // 4. Transition to listening
       setUserTranscript('');
       setAiResponse('');
       setState('listening');
@@ -192,7 +249,6 @@ export function useVoiceSession(config: AppConfig) {
     if (state !== 'waiting') return;
 
     const timer = setTimeout(() => {
-      // No follow-up detected — close Flux, restart Porcupine
       stopMic();
       setState('sleeping');
       if (wakeWordEnabled) startPorcupine();
@@ -201,16 +257,15 @@ export function useVoiceSession(config: AppConfig) {
     return () => clearTimeout(timer);
   }, [state, stopMic, wakeWordEnabled, startPorcupine]);
 
-  // When TTS finishes and LLM stream is done, enter waiting for follow-up
+  // When TTS finishes and LLM stream is done, enter waiting
   const prevSpeakingRef = useRef(false);
   useEffect(() => {
-    if (prevSpeakingRef.current && !isSpeaking && streamDoneRef.current && stateRef.current !== 'sleeping') {
+    if (prevSpeakingRef.current && !tts.isSpeaking && streamDoneRef.current && stateRef.current !== 'sleeping') {
       enterWaiting();
     }
-    prevSpeakingRef.current = isSpeaking;
-  }, [isSpeaking, enterWaiting]);
+    prevSpeakingRef.current = tts.isSpeaking;
+  }, [tts.isSpeaking, enterWaiting]);
 
-  // Ensure mic is always off when sleeping
   useEffect(() => {
     if (state === 'sleeping') stopMic();
   }, [state, stopMic]);
@@ -228,41 +283,44 @@ export function useVoiceSession(config: AppConfig) {
 
   // ── Manual activation (hotkey/click) ──
   const startConversation = useCallback(() => {
-    stopTTS();
+    tts.stop();
     if (wakeWordEnabled) stopPorcupine();
     processingRef.current = false;
     streamDoneRef.current = false;
+    speculativeInputRef.current = null;
     setUserTranscript('');
     setAiResponse('');
     setState('listening');
     startMic();
-  }, [startMic, stopTTS, wakeWordEnabled, stopPorcupine]);
+  }, [startMic, tts, wakeWordEnabled, stopPorcupine]);
 
   const interrupt = useCallback(() => {
-    stopTTS();
+    tts.stop();
     startConversation();
-  }, [stopTTS, startConversation]);
+  }, [tts, startConversation]);
 
   const cancel = useCallback(() => {
+    conductor.abort();
     stopMic();
-    stopTTS();
+    tts.stop();
     processingRef.current = false;
     streamDoneRef.current = false;
+    speculativeInputRef.current = null;
     setUserTranscript('');
     setState('sleeping');
     if (wakeWordEnabled) startPorcupine();
-  }, [stopMic, stopTTS, wakeWordEnabled, startPorcupine]);
+  }, [stopMic, tts, wakeWordEnabled, startPorcupine]);
 
   return {
-    state: isSpeaking ? ('speaking' as AppState) : state,
+    state: tts.isSpeaking ? ('speaking' as AppState) : state,
     userTranscript,
     aiResponse,
     startConversation,
     interrupt,
     cancel,
-    clearHistory,
+    clearHistory: conductor.clearHistory,
     processInput,
-    enqueueSentence,
-    isSpeaking,
+    isSpeaking: tts.isSpeaking,
+    ttsReady: true,
   };
 }

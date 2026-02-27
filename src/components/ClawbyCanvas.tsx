@@ -81,14 +81,26 @@ const STATE_CONFIGS: Record<string, {
     fresnelPower: 3.5,
     brightness: 0.4,
   },
+  loading: {
+    color1: [0.85, 0.15, 0.15],
+    color2: [0.75, 0.10, 0.10],
+    color3: [0.95, 0.25, 0.20],
+    noiseStrength: 0.08,
+    noiseSpeed: 0.15,
+    noiseFrequency: 1.4,
+    pulse: 0.3,
+    fresnelPower: 3.0,
+    brightness: 0.5,
+  },
 };
 
 interface ClawbyCanvasProps {
   state: AppState;
   size?: number;
+  loading?: boolean;
 }
 
-export default function ClawbyCanvas({ state, size = 240 }: ClawbyCanvasProps) {
+export default function ClawbyCanvas({ state, size = 240, loading = false }: ClawbyCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const uniformsRef = useRef<any>(null);
@@ -183,8 +195,10 @@ export default function ClawbyCanvas({ state, size = 240 }: ClawbyCanvasProps) {
   }, [size]);
 
   useEffect(() => {
-    targetConfigRef.current = STATE_CONFIGS[state] || STATE_CONFIGS.sleeping;
-  }, [state]);
+    targetConfigRef.current = loading
+      ? STATE_CONFIGS.loading
+      : (STATE_CONFIGS[state] || STATE_CONFIGS.sleeping);
+  }, [state, loading]);
 
   return (
     <div

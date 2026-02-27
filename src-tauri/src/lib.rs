@@ -89,10 +89,16 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
             notch_plugin::configure_window(&window);
 
-            window.set_focusable(false)?;
+            #[cfg(not(debug_assertions))]
+            {
+                window.set_focusable(false)?;
+                window.set_ignore_cursor_events(true)?;
+            }
             window.set_visible_on_all_workspaces(true)?;
-            window.set_ignore_cursor_events(true)?;
             window.show()?;
+
+            #[cfg(debug_assertions)]
+            window.open_devtools();
 
             Ok(())
         })

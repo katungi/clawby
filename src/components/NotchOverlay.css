@@ -125,6 +125,7 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+
 /* ── State Glow ── */
 
 .notch.state-sleeping  { box-shadow: 0 2px 12px rgba(150, 140, 200, 0.08); }

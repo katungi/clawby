@@ -5,6 +5,7 @@ import type { AppState } from '../lib/types';
 interface ClawbyOrbProps {
   state: AppState;
   size?: number;
+  loading?: boolean;
 }
 
 // Aura glow — commented out, will revisit later
@@ -16,14 +17,14 @@ interface ClawbyOrbProps {
 //   sleeping: 'transparent',
 // };
 
-export default function ClawbyOrb({ state, size = 240 }: ClawbyOrbProps) {
+export default function ClawbyOrb({ state, size = 240, loading = false }: ClawbyOrbProps) {
   return (
     <div style={{
       position: 'relative',
       width: size,
       height: size,
     }}>
-      <ClawbyCanvas state={state} size={size} />
+      <ClawbyCanvas state={state} size={size} loading={loading} />
       <ClawbyEyes state={state} size={size} />
     </div>
   );

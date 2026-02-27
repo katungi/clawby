@@ -6,6 +6,10 @@ export interface AppConfig {
   voice: 'nova' | 'alloy' | 'echo' | 'fable' | 'onyx' | 'shimmer';
   model: string;
   picovoiceKey?: string;
+
+  // Conductor
+  conductorBaseUrl?: string;  // OpenAI-compatible API base URL (defaults to OpenClaw gateway)
+  conductorModel?: string;    // e.g. 'gpt-4o-mini' (defaults to 'gpt-4o-mini')
 }
 
 const STORAGE_KEY = 'clawassist-config';

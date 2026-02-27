@@ -13,14 +13,17 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.30",
     "@picovoice/porcupine-web": "^4.0.0",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-global-shortcut": "^2.3.1",
     "@types/three": "^0.182.0",
+    "ai": "^6.0.94",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "three": "^0.182.0",
-    "vite-plugin-glsl": "^1.5.5"
+    "vite-plugin-glsl": "^1.5.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@rollup/pluginutils": "^5.3.0",
