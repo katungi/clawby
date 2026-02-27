@@ -230,8 +230,6 @@ export function useVoiceSession(config: AppConfig) {
 
     (async () => {
       stopPorcupine();
-      await new Promise(r => setTimeout(r, 100));
-      if (cancelled) return;
 
       await startMic();
       if (cancelled) return;

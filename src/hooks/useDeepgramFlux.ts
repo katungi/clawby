@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState } from 'react';
+import { acquireSharedMicrophone, releaseSharedMicrophone } from './sharedMicrophone';
 
 // ── Flux v2 Message Types ──
 
@@ -159,7 +160,7 @@ export function useDeepgramFlux(options: UseDeepgramFluxOptions) {
     }
 
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      releaseSharedMicrophone();
       streamRef.current = null;
     }
 
@@ -175,6 +176,8 @@ export function useDeepgramFlux(options: UseDeepgramFluxOptions) {
     if (isListening) return;
 
     try {
+      const streamPromise = acquireSharedMicrophone();
+
       // ── 1. Build WebSocket URL ──
       const params = new URLSearchParams({
         model: 'flux-general-en',
@@ -272,15 +275,7 @@ export function useDeepgramFlux(options: UseDeepgramFluxOptions) {
       };
 
       // ── 4. Set up mic → AudioWorklet → linear16 PCM ──
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: SAMPLE_RATE,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const stream = await streamPromise;
       streamRef.current = stream;
 
       const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });

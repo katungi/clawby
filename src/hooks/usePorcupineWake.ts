@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { acquireSharedMicrophone, releaseSharedMicrophone } from './sharedMicrophone';
 
 // ── Types ──
 
@@ -123,7 +124,7 @@ export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupine
     }
 
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      releaseSharedMicrophone();
       streamRef.current = null;
     }
 
@@ -170,15 +171,7 @@ export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupine
       console.log('[Porcupine] Initialized — frameLength:', porcupine.frameLength, 'sampleRate:', porcupine.sampleRate);
 
       // ── 3. Acquire mic ──
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: SAMPLE_RATE,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const stream = await acquireSharedMicrophone();
       streamRef.current = stream;
 
       // ── 4. AudioWorklet → Int16 PCM → porcupine.process() ──
