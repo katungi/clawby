@@ -97,8 +97,10 @@ pub fn run() {
             window.set_visible_on_all_workspaces(true)?;
             window.show()?;
 
-            #[cfg(debug_assertions)]
-            window.open_devtools();
+
+
+            // #[cfg(debug_assertions)]
+            // window.open_devtools();
 
             Ok(())
         })
