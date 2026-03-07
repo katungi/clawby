@@ -24,6 +24,7 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
   const [oaiKey, setOaiKey] = useState(saved?.openaiKey ?? '');
   const [voice, setVoice] = useState<AppConfig['voice']>(saved?.voice ?? 'nova');
   const [model, setModel] = useState(saved?.model ?? 'openai/gpt-4o-mini');
+  const [conductorModel, setConductorModel] = useState(saved?.conductorModel ?? 'openai/gpt-4o-mini');
   const [pvKey, setPvKey] = useState(saved?.picovoiceKey ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,8 +38,9 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
     const trimmedDg = dgKey.trim();
     const trimmedOai = oaiKey.trim();
     const trimmedModel = model.trim();
+    const trimmedConductorModel = conductorModel.trim();
 
-    if (!trimmedUrl || !trimmedToken || !trimmedDg || !trimmedOai) {
+    if (!trimmedUrl || !trimmedToken || !trimmedDg || !trimmedOai || !trimmedConductorModel) {
       setError('All fields are required.');
       return;
     }
@@ -53,7 +55,7 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
           Authorization: `Bearer ${trimmedToken}`,
         },
         body: JSON.stringify({
-          model: trimmedModel,
+          model: trimmedConductorModel,
           messages: [{ role: 'user', content: 'respond with just the word "connected"' }],
           stream: false,
         }),
@@ -75,6 +77,7 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
       openaiKey: trimmedOai,
       voice,
       model: trimmedModel,
+      conductorModel: trimmedConductorModel,
       picovoiceKey: pvKey.trim() || undefined,
     };
 
@@ -114,9 +117,14 @@ export function SetupScreen({ onConnect, onCancel }: SetupScreenProps) {
           </select>
         </div>
         <div className="field">
-          <label>Model</label>
+          <label>Assistant Model (fast chat)</label>
+          <input value={conductorModel} onChange={(e) => setConductorModel(e.target.value)} />
+          <div className="hint">Used for voice responses. Choose a fast model (for example: openai/gpt-4o-mini).</div>
+        </div>
+        <div className="field">
+          <label>Tool Model (actions)</label>
           <input value={model} onChange={(e) => setModel(e.target.value)} />
-          <div className="hint">Must match a model configured in your OpenClaw</div>
+          <div className="hint">Used when openclaw executes computer actions. Can be stronger/slower.</div>
         </div>
         <div className="field">
           <label>Picovoice AccessKey (optional)</label>

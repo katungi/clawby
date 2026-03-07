@@ -13,6 +13,74 @@ let pendingStream: Promise<MediaStream> | null = null;
 let leaseCount = 0;
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 
+type LegacyNavigator = Navigator & {
+  getUserMedia?: (
+    constraints: MediaStreamConstraints,
+    onSuccess: (stream: MediaStream) => void,
+    onError: (error: unknown) => void,
+  ) => void;
+  webkitGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    onSuccess: (stream: MediaStream) => void,
+    onError: (error: unknown) => void,
+  ) => void;
+  mozGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    onSuccess: (stream: MediaStream) => void,
+    onError: (error: unknown) => void,
+  ) => void;
+  msGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    onSuccess: (stream: MediaStream) => void,
+    onError: (error: unknown) => void,
+  ) => void;
+};
+
+function resolveNavigator(): LegacyNavigator | null {
+  if (typeof navigator !== 'undefined') {
+    return navigator as LegacyNavigator;
+  }
+
+  const fromWindow = (globalThis as { window?: { navigator?: Navigator } }).window?.navigator;
+  if (fromWindow) {
+    return fromWindow as LegacyNavigator;
+  }
+
+  const fromSelf = (globalThis as { self?: { navigator?: Navigator } }).self?.navigator;
+  if (fromSelf) {
+    return fromSelf as LegacyNavigator;
+  }
+
+  return null;
+}
+
+async function requestMicrophoneStream(): Promise<MediaStream> {
+  const nav = resolveNavigator();
+
+  if (nav?.mediaDevices?.getUserMedia) {
+    return nav.mediaDevices.getUserMedia.call(nav.mediaDevices, { audio: MIC_CONSTRAINTS });
+  }
+
+  const legacyGetUserMedia =
+    nav?.getUserMedia
+    ?? nav?.webkitGetUserMedia
+    ?? nav?.mozGetUserMedia
+    ?? nav?.msGetUserMedia;
+
+  if (legacyGetUserMedia) {
+    return new Promise((resolve, reject) => {
+      legacyGetUserMedia.call(
+        nav,
+        { audio: MIC_CONSTRAINTS },
+        resolve,
+        reject,
+      );
+    });
+  }
+
+  throw new Error('Microphone API unavailable in this runtime.');
+}
+
 function clearReleaseTimer() {
   if (releaseTimer) {
     clearTimeout(releaseTimer);
@@ -40,8 +108,7 @@ export async function acquireSharedMicrophone(): Promise<MediaStream> {
     }
 
     if (!pendingStream) {
-      pendingStream = navigator.mediaDevices
-        .getUserMedia({ audio: MIC_CONSTRAINTS })
+      pendingStream = requestMicrophoneStream()
         .then((stream) => {
           sharedStream = stream;
           return stream;
@@ -69,4 +136,3 @@ export function releaseSharedMicrophone() {
     }
   }, MIC_RELEASE_GRACE_MS);
 }
-

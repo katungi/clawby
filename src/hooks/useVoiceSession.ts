@@ -29,9 +29,12 @@ export function useVoiceSession(config: AppConfig) {
   const startMicRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const stateRef = useRef<AppState>(state);
   stateRef.current = state;
+  const stateRefAlert = useRef(state);
+  stateRefAlert.current = state;
   const processingRef = useRef(false);
   const streamDoneRef = useRef(false);
   const speculativeInputRef = useRef<string | null>(null);
+  const showedMicAlertRef = useRef(false);
 
   // ── TTS (OpenAI only) ──
 
@@ -53,6 +56,17 @@ export function useVoiceSession(config: AppConfig) {
     streamDoneRef.current = false;
     speculativeInputRef.current = null;
     setState('waiting');
+  }, []);
+
+  const showMicHelpOnce = useCallback((message: string) => {
+    setAiResponse(message);
+    if (stateRefAlert.current !== 'sleeping') {
+      setState('sleeping');
+    }
+    if (!showedMicAlertRef.current) {
+      showedMicAlertRef.current = true;
+      window.alert(message);
+    }
   }, []);
 
   // ── Conductor ──
@@ -90,7 +104,7 @@ export function useVoiceSession(config: AppConfig) {
   const conductor = useConductor(
     {
       conductorBaseUrl: config.conductorBaseUrl || `${config.openclawUrl}/v1`,
-      conductorModel: config.conductorModel || config.model || 'gpt-4o-mini',
+      conductorModel: config.conductorModel || 'openai/gpt-4o-mini',
       conductorApiKey: config.openclawToken || config.openaiKey,
       openClawUrl: '/openclaw',
       openClawToken: config.openclawToken,
@@ -191,6 +205,11 @@ export function useVoiceSession(config: AppConfig) {
 
     onError: (error) => {
       console.error('[Flux] Error:', error);
+      if (/microphone|getusermedia|notallowed|denied|unavailable/i.test(error)) {
+        showMicHelpOnce(
+          'Microphone access failed. Enable access in System Settings > Privacy & Security > Microphone, then restart ClawAssist.',
+        );
+      }
     },
   };
 
@@ -217,6 +236,14 @@ export function useVoiceSession(config: AppConfig) {
   } = usePorcupineWake({
     accessKey: picovoiceKey,
     onWakeWordDetected: handleWakeWord,
+    onError: (error) => {
+      console.error('[Porcupine] Error:', error);
+      if (/microphone|getusermedia|notallowed|denied|unavailable/i.test(error)) {
+        showMicHelpOnce(
+          'Microphone access failed. Enable access in System Settings > Privacy & Security > Microphone, then restart ClawAssist.',
+        );
+      }
+    },
   });
 
   startPorcupineRef.current = startPorcupine;
@@ -289,7 +316,7 @@ export function useVoiceSession(config: AppConfig) {
     setUserTranscript('');
     setAiResponse('');
     setState('listening');
-    startMic();
+    void startMic();
   }, [startMic, tts, wakeWordEnabled, stopPorcupine]);
 
   const interrupt = useCallback(() => {

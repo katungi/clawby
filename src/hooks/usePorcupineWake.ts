@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { acquireSharedMicrophone, releaseSharedMicrophone } from './sharedMicrophone';
+import { requestUserMedia } from './requestUserMedia';
 
 // ── Types ──
 
@@ -8,6 +8,8 @@ export interface UsePorcupineWakeOptions {
   accessKey: string;
   /** Called when wake word is detected */
   onWakeWordDetected: () => void;
+  /** Optional callback for startup/runtime errors */
+  onError?: (error: string) => void;
 }
 
 export interface UsePorcupineWakeReturn {
@@ -98,7 +100,7 @@ async function playActivationChime() {
 // ── The Hook ──
 
 export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupineWakeReturn {
-  const { accessKey, onWakeWordDetected } = options;
+  const { accessKey, onWakeWordDetected, onError } = options;
 
   const [isListening, setIsListening] = useState(false);
 
@@ -124,7 +126,7 @@ export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupine
     }
 
     if (streamRef.current) {
-      releaseSharedMicrophone();
+      streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
 
@@ -171,7 +173,15 @@ export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupine
       console.log('[Porcupine] Initialized — frameLength:', porcupine.frameLength, 'sampleRate:', porcupine.sampleRate);
 
       // ── 3. Acquire mic ──
-      const stream = await acquireSharedMicrophone();
+      const stream = await requestUserMedia({
+        audio: {
+          sampleRate: SAMPLE_RATE,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       streamRef.current = stream;
 
       // ── 4. AudioWorklet → Int16 PCM → porcupine.process() ──
@@ -200,9 +210,11 @@ export function usePorcupineWake(options: UsePorcupineWakeOptions): UsePorcupine
       console.log('[Porcupine] Listening for wake word...');
     } catch (error) {
       console.error('[Porcupine] Failed to start:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      onError?.(message);
       cleanup();
     }
-  }, [accessKey, isListening, cleanup]);
+  }, [accessKey, isListening, cleanup, onError]);
 
   const stopListening = useCallback(() => {
     cleanup();

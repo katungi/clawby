@@ -153,7 +153,31 @@ export function useConductor(
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
   const provider = useMemo(
-    () => createOpenAI({ apiKey: config.conductorApiKey, baseURL: config.conductorBaseUrl }),
+    () => createOpenAI({
+      apiKey: config.conductorApiKey,
+      baseURL: config.conductorBaseUrl,
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers ?? {});
+        headers.delete('user-agent');
+
+        let body = init?.body;
+        if (typeof body === 'string') {
+          try {
+            const parsed = JSON.parse(body) as Record<string, unknown>;
+            delete parsed.stream_options;
+            body = JSON.stringify(parsed);
+          } catch {
+            // Keep original body when it is not JSON.
+          }
+        }
+
+        return fetch(input, {
+          ...init,
+          headers,
+          body,
+        });
+      },
+    }),
     [config.conductorApiKey, config.conductorBaseUrl],
   );
 
@@ -180,7 +204,7 @@ export function useConductor(
           system: CLAWBY_SYSTEM_PROMPT,
           messages: historyRef.current,
           abortSignal: abortController.signal,
-          stopWhen: stepCountIs(3),
+          stopWhen: stepCountIs(2),
 
           // ── The OpenClaw Tool ──
           tools: {

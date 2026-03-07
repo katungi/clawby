@@ -4,9 +4,16 @@ const PORT = 3001;
 const OPENCLAW = 'http://127.0.0.1:18789';
 
 http.createServer(async (req, res) => {
+  const requestedHeaders = req.headers['access-control-request-headers'];
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Reflect requested headers so browser preflight accepts SDK-specific headers.
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    requestedHeaders || 'Content-Type, Authorization, User-Agent',
+  );
+  res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -14,12 +21,18 @@ http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const body = Buffer.concat(chunks);
 
+  const forwardHeaders = {};
+  const passthroughHeaders = new Set(['authorization', 'content-type', 'accept']);
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (!value) continue;
+    if (passthroughHeaders.has(key) || key.startsWith('x-')) {
+      forwardHeaders[key] = value;
+    }
+  }
+
   const proxyReq = http.request(OPENCLAW + req.url, {
     method: req.method,
-    headers: {
-      'content-type': req.headers['content-type'] || 'application/json',
-      'authorization': req.headers['authorization'] || '',
-    },
+    headers: forwardHeaders,
   }, (proxyRes) => {
     // Stream through, don't buffer
     const headers = { ...proxyRes.headers, 'access-control-allow-origin': '*' };
